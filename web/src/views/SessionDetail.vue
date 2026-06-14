@@ -1,128 +1,129 @@
 <template>
-  <div class="session-detail-page">
-    <div class="page-title">
-      <div class="page-title-heading">
-        <el-button :icon="ArrowLeft" @click="$router.push('/')" text style="margin-right: 8px" />
-        {{ summary ? displayName(summary) : '会话详情' }}
-      </div>
-      <div class="page-title-extra">
+  <div class="session-detail-page" :class="{ 'is-mobile': isMobile }">
+    <!-- 顶部信息栏（紧凑） -->
+    <div class="session-header-bar">
+      <div class="header-left">
+        <el-button :icon="ArrowLeft" @click="$router.push('/')" text size="small" />
+        <span class="session-name">{{ summary ? displayName(summary) : '会话详情' }}</span>
         <el-tag v-if="summary" :type="statusTagType(summary.status, summary.ended)" size="small">
           {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
         </el-tag>
         <div v-if="summary && summary.lastTurnStatus === 'inProgress'" class="live-indicator">
           <span class="live-dot"></span>
-          <span>实时执行中</span>
-        </div>
-        <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle />
-      </div>
-    </div>
-
-    <div v-if="summary" class="card">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px">
-        <div>
-          <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">{{ displayName(summary) }}</div>
-          <div style="font-size: 12px; color: var(--cf-text-secondary); font-family: monospace; margin-top: 4px">
-            {{ summary.cwd }}
-          </div>
+          <span>执行中</span>
         </div>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px">
-        <el-tag size="small" :type="summary.loaded ? 'success' : ''">
-          {{ summary.loaded ? '已接管' : '未接管' }}
-        </el-tag>
-        <el-tag size="small" type="info">{{ summary.source }}</el-tag>
-        <el-tag v-if="summary.branch" size="small">{{ summary.branch }}</el-tag>
-        <el-tag size="small">{{ summary.modelProvider }}</el-tag>
-        <el-tag size="small" :type="lifecycleTagType(summary.lifecycleStage)">
-          {{ lifecycleLabel(summary.lifecycleStage) }}
-        </el-tag>
-      </div>
-      <div v-if="summary.preview" style="font-size: 13px; color: var(--cf-text-secondary); margin-bottom: 12px">
-        {{ truncateText(summary.preview, 200) }}
-      </div>
-      <div style="font-size: 11px; color: var(--cf-text-secondary)">
-        更新 {{ formatTimestamp(summary.updatedAt) }}
-      </div>
-    </div>
-
-    <div v-if="summary && !summary.loaded && !summary.ended" class="card" style="text-align: center">
-      <p style="margin-bottom: 12px; color: var(--cf-text-secondary)">这个会话尚未接管，接管后可以继续执行。</p>
-      <el-button type="primary" :loading="resuming" @click="handleResume">接管会话</el-button>
-    </div>
-
-    <div v-if="summary && summary.ended" class="card" style="text-align: center">
-      <p style="margin-bottom: 12px; color: var(--cf-text-secondary)">这个会话已结束，可以重新接管继续。</p>
-      <el-button type="primary" :loading="resuming" @click="handleResume">重新接管</el-button>
-    </div>
-
-    <div v-if="summary && summary.loaded && !summary.ended" class="card">
-      <div style="font-size: 15px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">发送指令</div>
-      <el-input v-model="promptText" type="textarea" :rows="3" placeholder="输入指令..." :disabled="submitting" />
-      <div style="display: flex; gap: 8px; margin-top: 12px">
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"
-          :disabled="!promptText.trim()">
-          {{ summary.lastTurnStatus === 'inProgress' ? 'Steer' : '发送' }}
-        </el-button>
-        <el-button v-if="summary.lastTurnStatus === 'inProgress'" type="warning" @click="handleInterrupt">
-          中断
-        </el-button>
-        <el-button type="danger" @click="handleEnd">结束会话</el-button>
+      <div class="header-right">
+        <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle size="small" />
+        <el-dropdown v-if="summary" trigger="click" @command="onAction">
+          <el-button size="small"><el-icon><More /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-if="!summary.loaded && !summary.ended" command="resume">
+                <el-icon><Connection /></el-icon> 接管会话
+              </el-dropdown-item>
+              <el-dropdown-item v-if="summary.ended" command="resume">
+                <el-icon><Connection /></el-icon> 重新接管
+              </el-dropdown-item>
+              <el-dropdown-item v-if="summary.loaded && !summary.ended" command="end">
+                <el-icon><SwitchButton /></el-icon> 结束会话
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
-    <div v-if="sessionApprovals.length > 0" style="margin-top: 16px">
-      <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">待审批</div>
+    <!-- 会话元信息（可折叠） -->
+    <div v-if="summary" class="session-meta" :class="{ 'is-collapsed': metaCollapsed }" @click="metaCollapsed = !metaCollapsed">
+      <div class="meta-row">
+        <span class="meta-cwd">{{ summary.cwd }}</span>
+        <div class="meta-tags">
+          <el-tag size="small" :type="summary.loaded ? 'success' : ''">{{ summary.loaded ? '已接管' : '未接管' }}</el-tag>
+          <el-tag v-if="summary.branch" size="small">{{ summary.branch }}</el-tag>
+          <el-tag size="small" :type="lifecycleTagType(summary.lifecycleStage)">{{ lifecycleLabel(summary.lifecycleStage) }}</el-tag>
+        </div>
+        <el-icon class="meta-arrow" :class="{ 'is-up': !metaCollapsed }"><ArrowRight /></el-icon>
+      </div>
+      <div v-if="!metaCollapsed && summary.preview" class="meta-preview">{{ truncateText(summary.preview, 200) }}</div>
+    </div>
+
+    <!-- 未接管提示 -->
+    <div v-if="summary && !summary.loaded && !summary.ended" class="resume-banner">
+      <span>会话未接管，接管后可继续执行</span>
+      <el-button type="primary" size="small" :loading="resuming" @click="handleResume">接管</el-button>
+    </div>
+    <div v-if="summary && summary.ended" class="resume-banner">
+      <span>会话已结束，可重新接管继续</span>
+      <el-button type="primary" size="small" :loading="resuming" @click="handleResume">重新接管</el-button>
+    </div>
+
+    <!-- 审批区域 -->
+    <div v-if="sessionApprovals.length > 0" class="approval-section">
       <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start">
-          <div>
-            <div style="font-size: 14px; font-weight: 600">{{ approval.kind }}</div>
-            <div style="font-size: 13px; color: var(--cf-text-secondary); margin-top: 4px">
-              {{ approval.reason || approval.summary }}
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px">
-            <el-button size="small" type="success" @click="handleApproval(approval, true)">批准</el-button>
-            <el-button size="small" type="danger" @click="handleApproval(approval, false)">拒绝</el-button>
-          </div>
+        <div class="approval-info">
+          <div class="approval-kind">{{ approval.kind }}</div>
+          <div class="approval-reason">{{ approval.reason || approval.summary }}</div>
+        </div>
+        <div class="approval-actions">
+          <el-button size="small" type="success" @click="handleApproval(approval, true)">批准</el-button>
+          <el-button size="small" type="danger" @click="handleApproval(approval, false)">拒绝</el-button>
         </div>
       </div>
     </div>
 
-    <div v-if="detail" style="margin-top: 16px">
-      <div v-if="detail.turns.length === 0" class="card">
-        <p style="color: var(--cf-text-secondary)">
-          {{ summary?.ended ? '这个会话已经结束，没有更多 turn。' : '这个会话还没有 turn，可以直接发送指令开始。' }}
-        </p>
+    <!-- 对话记录（中间滚动区域） -->
+    <div class="chat-area" ref="chatAreaRef">
+      <div v-if="detail && detail.turns.length === 0" class="empty-hint">
+        {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
       </div>
 
       <template v-if="orderedTurns.length > 0">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px">
-          <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">
-            对话记录
-            <el-tag size="small" type="info" round style="margin-left: 8px">{{ orderedTurns.length }}</el-tag>
-          </div>
-          <div style="display: flex; gap: 8px">
-            <el-button size="small" @click="expandAll">全部展开</el-button>
-            <el-button size="small" @click="collapseAll">全部折叠</el-button>
+        <div class="chat-toolbar">
+          <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
+          <div style="display: flex; gap: 4px">
+            <el-button size="small" text @click="expandAll">展开</el-button>
+            <el-button size="small" text @click="collapseAll">折叠</el-button>
           </div>
         </div>
         <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
       </template>
+
+      <div v-else-if="!app.loading && !detail" class="empty-hint">
+        <el-icon class="is-loading" :size="20"><Loading /></el-icon>
+        <span>正在加载…</span>
+      </div>
     </div>
 
-    <div v-else-if="!app.loading" class="card" style="text-align: center">
-      <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-      <span style="margin-left: 8px; color: var(--cf-text-secondary)">正在加载会话详情…</span>
+    <!-- 底部输入区域（固定） -->
+    <div v-if="summary && summary.loaded && !summary.ended" class="input-area">
+      <div class="input-row">
+        <el-input
+          v-model="promptText"
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          placeholder="输入指令…"
+          :disabled="submitting"
+          @keydown.enter.exact.prevent="handleSubmit"
+        />
+        <el-button type="primary" :loading="submitting" @click="handleSubmit"
+          :disabled="!promptText.trim()" class="send-btn">
+          {{ summary.lastTurnStatus === 'inProgress' ? 'Steer' : '发送' }}
+        </el-button>
+        <el-button v-if="summary.lastTurnStatus === 'inProgress'" type="warning" size="small" @click="handleInterrupt">
+          中断
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore, type ApprovalRequest, type SessionSummary } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton } from '@element-plus/icons-vue'
 import {
   formatTimestamp, statusTagType, statusLabel, lifecycleLabel,
   lifecycleTagType, truncateText, sessionDisplayName,
@@ -135,6 +136,12 @@ const sessionId = route.params.id as string
 const promptText = ref('')
 const submitting = ref(false)
 const resuming = ref(false)
+const metaCollapsed = ref(true)
+const chatAreaRef = ref<HTMLElement | null>(null)
+
+const isMobile = ref(window.innerWidth <= 768)
+function onResize() { isMobile.value = window.innerWidth <= 768 }
+window.addEventListener('resize', onResize)
 
 const detail = computed(() => app.sessionDetails[sessionId])
 const summary = computed<SessionSummary | undefined>(() => {
@@ -169,9 +176,23 @@ function collapseAll() {
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
+// Auto-scroll to bottom when new turns arrive
+watch(orderedTurns, () => {
+  nextTick(() => {
+    if (chatAreaRef.value) {
+      chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
+    }
+  })
+}, { deep: true })
+
 async function refreshPage() {
   await app.refreshDashboard()
   await app.loadSession(sessionId)
+}
+
+function onAction(cmd: string) {
+  if (cmd === 'resume') handleResume()
+  else if (cmd === 'end') handleEnd()
 }
 
 async function handleResume() {
@@ -250,37 +271,78 @@ async function handleApproval(approval: ApprovalRequest, accept: boolean) {
 
 onMounted(async () => {
   await refreshPage()
-  // Register this session as active so SSE events trigger targeted refresh
   app.registerActiveSession(sessionId)
 })
 
 onUnmounted(() => {
   app.unregisterActiveSession(sessionId)
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
 <style scoped>
 .session-detail-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   max-width: 1200px;
   margin: 0 auto;
+  overflow: hidden;
+}
+
+/* ---- 顶部信息栏 ---- */
+.session-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--cf-card);
+  border-bottom: 1px solid var(--cf-border-light);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cf-text-heavy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .live-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--cf-warning);
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
+  flex-shrink: 0;
 }
 
 .live-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--cf-warning);
   animation: live-pulse 1.5s ease-in-out infinite;
@@ -289,5 +351,223 @@ onUnmounted(() => {
 @keyframes live-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* ---- 元信息 ---- */
+.session-meta {
+  padding: 8px 16px;
+  background: var(--cf-card);
+  border-bottom: 1px solid var(--cf-border-light);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.session-meta:hover {
+  background: #f8fafd;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meta-cwd {
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}
+
+.meta-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.meta-arrow {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  color: var(--cf-text-lighter);
+  font-size: 12px;
+}
+
+.meta-arrow.is-up {
+  transform: rotate(90deg);
+}
+
+.meta-preview {
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.session-meta.is-collapsed .meta-preview {
+  display: none;
+}
+
+/* ---- 接管提示 ---- */
+.resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  font-size: 13px;
+  color: #92400e;
+  flex-shrink: 0;
+}
+
+/* ---- 审批 ---- */
+.approval-section {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+}
+
+.approval-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--cf-card);
+  border-radius: var(--cf-radius-sm);
+  border-left: 3px solid var(--cf-warning);
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.approval-card:last-child {
+  margin-bottom: 0;
+}
+
+.approval-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.approval-kind {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.approval-reason {
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ---- 聊天区域 ---- */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.empty-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--cf-text-secondary);
+  font-size: 14px;
+}
+
+/* ---- 底部输入 ---- */
+.input-area {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: var(--cf-card);
+  border-top: 1px solid var(--cf-border-light);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.input-row :deep(.el-textarea__inner) {
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+  resize: none;
+}
+
+.send-btn {
+  border-radius: 12px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+/* ---- 手机适配 ---- */
+.session-detail-page.is-mobile .session-header-bar {
+  padding: 8px 12px;
+}
+
+.session-detail-page.is-mobile .session-name {
+  font-size: 14px;
+  max-width: 160px;
+}
+
+.session-detail-page.is-mobile .meta-cwd {
+  max-width: 200px;
+  font-size: 11px;
+}
+
+.session-detail-page.is-mobile .chat-area {
+  padding: 8px 10px;
+}
+
+.session-detail-page.is-mobile .input-area {
+  padding: 8px 10px;
+}
+
+.session-detail-page.is-mobile .input-row :deep(.el-textarea__inner) {
+  font-size: 16px; /* prevent iOS zoom */
+}
+
+.session-detail-page.is-mobile .send-btn {
+  height: 34px;
+}
+
+.session-detail-page.is-mobile .approval-card {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.session-detail-page.is-mobile .approval-actions {
+  margin-top: 6px;
+  width: 100%;
+  justify-content: flex-end;
 }
 </style>

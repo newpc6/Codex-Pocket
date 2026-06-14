@@ -137,7 +137,15 @@ func toTurnDetail(turn codex.Turn, runtimeState store.SessionRuntime) TurnDetail
 	}
 
 	for _, item := range turn.Items {
-		detail.Items = append(detail.Items, normalizeItem(item))
+		normalized := normalizeItem(item)
+		// If this is an agentMessage and we have accumulated deltas, prefer the delta text
+		// This enables real-time streaming display before the turn completes
+		if normalized.Type == "agentMessage" && normalized.ID != "" {
+			if deltaText, ok := runtimeState.MessageDeltasByItem[normalized.ID]; ok && deltaText != "" {
+				normalized.Body = deltaText
+			}
+		}
+		detail.Items = append(detail.Items, normalized)
 	}
 
 	return detail

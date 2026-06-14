@@ -54,7 +54,7 @@
           <div v-if="item.title" class="item-title">{{ item.title }}</div>
           <div v-if="item.body" class="item-body" :class="{ 'is-code': isCodeType(item.type) }">
             <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
-            <template v-else>{{ item.body }}</template>
+            <template v-else>{{ item.body }}<span v-if="isStreamingItem(item)" class="typing-cursor">|</span></template>
           </div>
           <div v-if="item.auxiliary" class="item-auxiliary">
             <el-collapse>
@@ -178,6 +178,11 @@ function itemStatusType(status: string) {
 
 function isCodeType(type: string): boolean {
   return ['commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall'].includes(type)
+}
+
+function isStreamingItem(item: any): boolean {
+  // Show typing cursor for agent messages in an in-progress turn
+  return props.turn.status === 'inProgress' && item.type === 'agentMessage'
 }
 </script>
 
@@ -503,6 +508,18 @@ function isCodeType(type: string): boolean {
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.typing-cursor {
+  display: inline;
+  color: var(--cf-primary);
+  font-weight: 400;
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .item-auxiliary {

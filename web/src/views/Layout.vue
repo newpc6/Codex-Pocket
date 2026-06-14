@@ -1,9 +1,12 @@
 <template>
-  <div class="main-layout">
+  <div class="main-layout" :class="{ 'is-mobile': isMobile }">
     <header class="header">
       <div class="brand">
+        <div v-if="isMobile" class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
+          <el-icon :size="20"><Operation /></el-icon>
+        </div>
         <div class="brand-mark">CF</div>
-        <div class="brand-text">
+        <div v-if="!isMobile" class="brand-text">
           <div class="brand-title">CodexFlow</div>
           <div class="brand-subtitle">Session Console</div>
         </div>
@@ -11,12 +14,12 @@
       <div class="header-right">
         <div class="agent-status" :class="{ online: online, sse: app.sseConnected }">
           <span class="status-dot"></span>
-          <span>{{ online ? 'Agent 在线' : 'Agent 离线' }}</span>
+          <span v-if="!isMobile">{{ online ? 'Agent 在线' : 'Agent 离线' }}</span>
         </div>
-        <div class="user-meta">
+        <div v-if="!isMobile" class="user-meta">
           <div class="user-name">{{ auth.username }}</div>
         </div>
-        <el-avatar class="avatar" :size="32" style="background-color: #3388ff">
+        <el-avatar class="avatar" :size="isMobile ? 28 : 32" style="background-color: #3388ff">
           {{ (auth.username || 'U')[0].toUpperCase() }}
         </el-avatar>
         <el-dropdown @command="onHeaderCommand">
@@ -33,9 +36,16 @@
         </el-dropdown>
       </div>
     </header>
+
+    <!-- Mobile drawer overlay -->
+    <div v-if="isMobile && mobileMenuOpen" class="mobile-overlay" @click="mobileMenuOpen = false"></div>
+
     <div class="menu-area">
-      <el-aside :width="collapsed ? '64px' : '220px'" :class="{ 'is-collapsed': collapsed }">
-        <el-menu :default-active="currentRoute" :collapse="collapsed" @select="handleMenuClick">
+      <el-aside
+        :width="isMobile ? '220px' : (collapsed ? '64px' : '220px')"
+        :class="{ 'is-collapsed': !isMobile && collapsed, 'is-mobile-drawer': isMobile, 'is-drawer-open': isMobile && mobileMenuOpen }"
+      >
+        <el-menu :default-active="currentRoute" :collapse="!isMobile && collapsed" @select="handleMenuClick">
           <el-menu-item index="/">
             <span class="menu-icon-box is-soft">
               <el-icon><Monitor /></el-icon>
@@ -56,7 +66,7 @@
             <span class="text">设置</span>
           </el-menu-item>
         </el-menu>
-        <div class="collapse-trigger" @click="collapsed = !collapsed">
+        <div v-if="!isMobile" class="collapse-trigger" @click="collapsed = !collapsed">
           <el-icon v-if="!collapsed"><Fold /></el-icon>
           <el-icon v-else><Expand /></el-icon>
         </div>
@@ -68,7 +78,7 @@
             <el-tab-pane v-for="tab in tabsStore.tabs" :key="tab.key" :name="tab.key" :closable="tab.closable">
               <template #label>
                 <el-dropdown :trigger="['contextmenu']" placement="top-start">
-                  <span>{{ tab.title }}</span>
+                  <span class="tab-label">{{ isMobile ? truncateTabTitle(tab.title) : tab.title }}</span>
                   <template #dropdown>
                     <el-dropdown-menu @command="onTabMenuClick($event, tab.key)">
                       <el-dropdown-item command="closeOther">
@@ -85,7 +95,7 @@
             <template #extra>
               <div class="tabs-extra" @click="onRefresh">
                 <el-icon><Refresh /></el-icon>
-                <span>刷新</span>
+                <span v-if="!isMobile">刷新</span>
               </div>
             </template>
           </el-tabs>
@@ -117,6 +127,15 @@ const app = useAppStore()
 const auth = useAuthStore()
 const tabsStore = useTabsStore()
 const collapsed = ref(false)
+const mobileMenuOpen = ref(false)
+const isMobile = ref(window.innerWidth <= 768)
+
+function onResize() { isMobile.value = window.innerWidth <= 768 }
+window.addEventListener('resize', onResize)
+
+function truncateTabTitle(title: string) {
+  return title.length > 6 ? title.slice(0, 6) + '…' : title
+}
 
 const currentRoute = computed(() => {
   if (route.path.startsWith('/session/')) return '/'
@@ -131,6 +150,7 @@ watch(() => route.path, () => {
 
 function handleMenuClick(index: string) {
   router.push(index)
+  if (isMobile.value) mobileMenuOpen.value = false
 }
 
 function onHeaderCommand(cmd: string) {
@@ -190,6 +210,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   app.disconnectSSE()
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
@@ -449,5 +470,80 @@ onUnmounted(() => {
   overflow: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* ---- Mobile ---- */
+.mobile-menu-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.mobile-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 99;
+}
+
+.main-layout.is-mobile .header {
+  padding: 0 12px;
+  height: 48px;
+  line-height: 48px;
+}
+
+.main-layout.is-mobile .brand-mark {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 12px;
+}
+
+.main-layout.is-mobile .header-right {
+  gap: 10px;
+}
+
+.el-aside.is-mobile-drawer {
+  position: fixed;
+  top: 48px;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  box-shadow: none;
+}
+
+.el-aside.is-mobile-drawer.is-drawer-open {
+  transform: translateX(0);
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.1);
+}
+
+.main-layout.is-mobile .tabs-container {
+  padding: 0 8px;
+  height: 40px;
+  line-height: 40px;
+}
+
+.main-layout.is-mobile .page-content {
+  padding: 10px;
+}
+
+.tab-label {
+  display: inline-block;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -13,11 +13,12 @@ import (
 )
 
 type SessionRuntime struct {
-	LatestDiffByTurn  map[string]string
-	LatestPlanByTurn  map[string]codex.TurnPlanUpdatedNotification
-	CurrentTurnID     string
-	RuntimeAttachMode string
-	Ended             bool
+	LatestDiffByTurn    map[string]string
+	LatestPlanByTurn    map[string]codex.TurnPlanUpdatedNotification
+	CurrentTurnID       string
+	RuntimeAttachMode   string
+	Ended               bool
+	MessageDeltasByItem map[string]string // itemId -> accumulated delta text
 }
 
 type SessionBinding struct {
@@ -101,10 +102,11 @@ func (s *Store) ReplaceSessions(threads []codex.Thread, loaded map[string]bool) 
 		if !ok {
 			existing = &SessionRecord{
 				Runtime: SessionRuntime{
-					LatestDiffByTurn:  make(map[string]string),
-					LatestPlanByTurn:  make(map[string]codex.TurnPlanUpdatedNotification),
-					RuntimeAttachMode: "",
-					Ended:             s.endedState[thread.ID],
+					LatestDiffByTurn:    make(map[string]string),
+					LatestPlanByTurn:    make(map[string]codex.TurnPlanUpdatedNotification),
+					MessageDeltasByItem: make(map[string]string),
+					RuntimeAttachMode:   "",
+					Ended:               s.endedState[thread.ID],
 				},
 			}
 		}
@@ -116,6 +118,9 @@ func (s *Store) ReplaceSessions(threads []codex.Thread, loaded map[string]bool) 
 		}
 		if existing.Runtime.LatestPlanByTurn == nil {
 			existing.Runtime.LatestPlanByTurn = make(map[string]codex.TurnPlanUpdatedNotification)
+		}
+		if existing.Runtime.MessageDeltasByItem == nil {
+			existing.Runtime.MessageDeltasByItem = make(map[string]string)
 		}
 		next[thread.ID] = existing
 	}
@@ -131,10 +136,11 @@ func (s *Store) UpsertThread(thread codex.Thread) {
 	if !ok {
 		record = &SessionRecord{
 			Runtime: SessionRuntime{
-				LatestDiffByTurn:  make(map[string]string),
-				LatestPlanByTurn:  make(map[string]codex.TurnPlanUpdatedNotification),
-				RuntimeAttachMode: "",
-				Ended:             s.endedState[thread.ID],
+				LatestDiffByTurn:    make(map[string]string),
+				LatestPlanByTurn:    make(map[string]codex.TurnPlanUpdatedNotification),
+				MessageDeltasByItem: make(map[string]string),
+				RuntimeAttachMode:   "",
+				Ended:               s.endedState[thread.ID],
 			},
 		}
 		s.sessions[thread.ID] = record
@@ -302,10 +308,11 @@ func (s *Store) ensureSessionLocked(threadID string) *SessionRecord {
 	record = &SessionRecord{
 		Thread: codex.Thread{ID: threadID},
 		Runtime: SessionRuntime{
-			LatestDiffByTurn:  make(map[string]string),
-			LatestPlanByTurn:  make(map[string]codex.TurnPlanUpdatedNotification),
-			RuntimeAttachMode: "",
-			Ended:             s.endedState[threadID],
+			LatestDiffByTurn:    make(map[string]string),
+			LatestPlanByTurn:    make(map[string]codex.TurnPlanUpdatedNotification),
+			MessageDeltasByItem: make(map[string]string),
+			RuntimeAttachMode:   "",
+			Ended:               s.endedState[threadID],
 		},
 	}
 	s.sessions[threadID] = record
@@ -342,6 +349,73 @@ func (s *Store) RecordPlan(notification codex.TurnPlanUpdatedNotification) {
 		return
 	}
 	record.Runtime.LatestPlanByTurn[notification.TurnID] = notification
+}
+
+func (s *Store) RecordMessageDelta(threadID, itemID, delta string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.sessions[threadID]
+	if !ok {
+		return
+	}
+	record.Runtime.MessageDeltasByItem[itemID] += delta
+}
+
+func (s *Store) RecordItemStarted(threadID, turnID string, item map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.sessions[threadID]
+	if !ok {
+		return
+	}
+	// Find the turn and append/update the item
+	for i := range record.Thread.Turns {
+		if record.Thread.Turns[i].ID == turnID {
+			itemID, _ := item["id"].(string)
+			// Check if item already exists
+			for j := range record.Thread.Turns[i].Items {
+				existingID, _ := record.Thread.Turns[i].Items[j]["id"].(string)
+				if existingID == itemID && itemID != "" {
+					// Update existing item
+					record.Thread.Turns[i].Items[j] = item
+					return
+				}
+			}
+			// Append new item
+			record.Thread.Turns[i].Items = append(record.Thread.Turns[i].Items, item)
+			return
+		}
+	}
+}
+
+func (s *Store) RecordItemCompleted(threadID, turnID string, item map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.sessions[threadID]
+	if !ok {
+		return
+	}
+	itemID, _ := item["id"].(string)
+	// Clear accumulated delta for this item since the final item is now available
+	delete(record.Runtime.MessageDeltasByItem, itemID)
+
+	for i := range record.Thread.Turns {
+		if record.Thread.Turns[i].ID == turnID {
+			for j := range record.Thread.Turns[i].Items {
+				existingID, _ := record.Thread.Turns[i].Items[j]["id"].(string)
+				if existingID == itemID && itemID != "" {
+					record.Thread.Turns[i].Items[j] = item
+					return
+				}
+			}
+			// Item not found, append it
+			record.Thread.Turns[i].Items = append(record.Thread.Turns[i].Items, item)
+			return
+		}
+	}
 }
 
 func (s *Store) SnapshotSessions() []SessionRecord {
@@ -500,17 +574,21 @@ func cloneSessionRecord(record SessionRecord) SessionRecord {
 	cloned := record
 	cloned.Thread = cloneThread(record.Thread)
 	cloned.Runtime = SessionRuntime{
-		LatestDiffByTurn:  make(map[string]string, len(record.Runtime.LatestDiffByTurn)),
-		LatestPlanByTurn:  make(map[string]codex.TurnPlanUpdatedNotification, len(record.Runtime.LatestPlanByTurn)),
-		CurrentTurnID:     record.Runtime.CurrentTurnID,
-		RuntimeAttachMode: record.Runtime.RuntimeAttachMode,
-		Ended:             record.Runtime.Ended,
+		LatestDiffByTurn:    make(map[string]string, len(record.Runtime.LatestDiffByTurn)),
+		LatestPlanByTurn:    make(map[string]codex.TurnPlanUpdatedNotification, len(record.Runtime.LatestPlanByTurn)),
+		MessageDeltasByItem: make(map[string]string, len(record.Runtime.MessageDeltasByItem)),
+		CurrentTurnID:       record.Runtime.CurrentTurnID,
+		RuntimeAttachMode:   record.Runtime.RuntimeAttachMode,
+		Ended:               record.Runtime.Ended,
 	}
 	for key, value := range record.Runtime.LatestDiffByTurn {
 		cloned.Runtime.LatestDiffByTurn[key] = value
 	}
 	for key, value := range record.Runtime.LatestPlanByTurn {
 		cloned.Runtime.LatestPlanByTurn[key] = value
+	}
+	for key, value := range record.Runtime.MessageDeltasByItem {
+		cloned.Runtime.MessageDeltasByItem[key] = value
 	}
 	return cloned
 }

@@ -237,6 +237,7 @@ export const useAppStore = defineStore('app', () => {
       if ([
         'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated',
         'thread/started', 'thread/status/changed', 'thread/closed',
+        'agentMessage/delta', 'item/started', 'item/completed',
       ].includes(method)) {
         await refreshDashboard()
       }

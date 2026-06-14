@@ -789,6 +789,21 @@ func (a *Agent) handleNotification(ctx context.Context, notification codex.Notif
 		if json.Unmarshal(notification.Params, &payload) == nil {
 			a.store.RecordPlan(payload)
 		}
+	case "agentMessage/delta":
+		var payload codex.AgentMessageDeltaNotification
+		if json.Unmarshal(notification.Params, &payload) == nil {
+			a.store.RecordMessageDelta(payload.ThreadID, payload.ItemID, payload.Delta)
+		}
+	case "item/started":
+		var payload codex.ItemStartedNotification
+		if json.Unmarshal(notification.Params, &payload) == nil {
+			a.store.RecordItemStarted(payload.ThreadID, payload.TurnID, payload.Item)
+		}
+	case "item/completed":
+		var payload codex.ItemCompletedNotification
+		if json.Unmarshal(notification.Params, &payload) == nil {
+			a.store.RecordItemCompleted(payload.ThreadID, payload.TurnID, payload.Item)
+		}
 	case "thread/closed":
 		_ = a.Refresh(ctx)
 	}

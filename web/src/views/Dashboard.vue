@@ -65,7 +65,7 @@
     </el-alert>
 
     <el-card shadow="never" style="border-radius: var(--cf-radius); margin-bottom: 18px;">
-      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <div class="filter-bar">
         <el-input v-model="searchQuery" placeholder="搜索会话名称、路径、分支..." prefix-icon="Search" clearable
           class="search-box" />
         <el-select v-model="filterByLifecycle" placeholder="生命周期" clearable style="width: 140px">
@@ -80,7 +80,7 @@
           <el-option label="名称" value="name" />
           <el-option label="状态" value="status" />
         </el-select>
-        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <div class="filter-bar-right">
           <div v-if="app.sseConnected" class="sse-badge">
             <span class="sse-dot"></span>
             实时
@@ -283,6 +283,20 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-bar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sse-badge {
   display: inline-flex;
   align-items: center;
@@ -307,5 +321,26 @@ onUnmounted(() => {
 @keyframes sse-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+@media (max-width: 768px) {
+  .filter-bar {
+    gap: 8px;
+  }
+
+  .filter-bar .search-box {
+    width: 100%;
+    order: -1;
+  }
+
+  .filter-bar .el-select {
+    width: calc(50% - 4px) !important;
+  }
+
+  .filter-bar-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>
