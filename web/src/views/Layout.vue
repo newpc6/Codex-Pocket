@@ -165,10 +165,11 @@ function onRefresh() {
 
 <style scoped>
 .main-layout {
-  min-height: 100vh;
+  height: 100vh;
   background: var(--cf-bg);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
@@ -267,6 +268,7 @@ function onRefresh() {
   flex: 1;
   display: flex;
   min-height: 0;
+  overflow: hidden;
 }
 
 .el-aside {
@@ -278,6 +280,7 @@ function onRefresh() {
   transition: width var(--cf-transition);
   overflow: hidden;
   flex-shrink: 0;
+  height: 100%;
 }
 
 .el-aside.is-collapsed {
@@ -348,6 +351,8 @@ function onRefresh() {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .tabs-container {
