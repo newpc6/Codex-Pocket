@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../utils/api'
+import { sseService, type SSEEvent } from '../utils/sse'
 
 export interface AgentInfo {
   id: string
@@ -97,6 +98,11 @@ export const useAppStore = defineStore('app', () => {
   const selectedAgentId = ref('codex')
   const loading = ref(false)
   const error = ref('')
+  const sseConnected = ref(false)
+  const lastEvent = ref<SSEEvent | null>(null)
+
+  // Track which sessions are currently being viewed (for targeted refresh)
+  const activeSessionIds = ref<Set<string>>(new Set())
 
   const filteredSessions = computed(() => {
     return dashboard.value.sessions.filter((s) => s.agentId === selectedAgentId.value)
@@ -205,10 +211,112 @@ export const useAppStore = defineStore('app', () => {
     return res.data
   }
 
+  // ---- SSE Integration ----
+
+  function connectSSE() {
+    sseService.connect()
+    sseConnected.value = true
+
+    // Wildcard handler: update lastEvent for any event
+    sseService.on('*', (event: SSEEvent) => {
+      lastEvent.value = event
+    })
+
+    // Codex notifications: turn progress, plan updates, diff updates, etc.
+    sseService.on('codex.notification', async (event: SSEEvent) => {
+      const method = event.payload?.method as string
+      if (!method) return
+
+      // Refresh session detail if it's a turn-related notification for an active session
+      const threadId = event.payload?.params?.threadId as string
+      if (threadId && activeSessionIds.value.has(threadId)) {
+        await loadSession(threadId)
+      }
+
+      // Always refresh dashboard on significant events
+      if ([
+        'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated',
+        'thread/started', 'thread/status/changed', 'thread/closed',
+      ].includes(method)) {
+        await refreshDashboard()
+      }
+    })
+
+    // Approval events
+    sseService.on('approval.created', async () => {
+      await refreshDashboard()
+    })
+
+    sseService.on('approval.resolved', async () => {
+      await refreshDashboard()
+    })
+
+    // Session lifecycle events
+    sseService.on('session.created', async () => {
+      await refreshDashboard()
+    })
+
+    sseService.on('session.resumed', async () => {
+      await refreshDashboard()
+    })
+
+    sseService.on('session.ended', async () => {
+      await refreshDashboard()
+    })
+
+    sseService.on('session.archived', async () => {
+      await refreshDashboard()
+    })
+
+    // Turn events
+    sseService.on('turn.started', async (event: SSEEvent) => {
+      const threadId = event.payload?.threadId as string
+      if (threadId && activeSessionIds.value.has(threadId)) {
+        await loadSession(threadId)
+      }
+      await refreshDashboard()
+    })
+
+    sseService.on('turn.steered', async (event: SSEEvent) => {
+      const threadId = event.payload?.threadId as string
+      if (threadId && activeSessionIds.value.has(threadId)) {
+        await loadSession(threadId)
+      }
+    })
+
+    sseService.on('turn.interrupted', async (event: SSEEvent) => {
+      const threadId = event.payload?.threadId as string
+      if (threadId && activeSessionIds.value.has(threadId)) {
+        await loadSession(threadId)
+      }
+      await refreshDashboard()
+    })
+
+    // Sessions refreshed
+    sseService.on('sessions.refreshed', async () => {
+      await refreshDashboard()
+    })
+  }
+
+  function disconnectSSE() {
+    sseService.disconnect()
+    sseConnected.value = false
+  }
+
+  function registerActiveSession(id: string) {
+    activeSessionIds.value.add(id)
+  }
+
+  function unregisterActiveSession(id: string) {
+    activeSessionIds.value.delete(id)
+  }
+
   return {
     dashboard, sessionDetails, selectedAgentId, loading, error,
+    sseConnected, lastEvent, activeSessionIds,
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
     refreshDashboard, loadSession, resumeSession, endSession, archiveSession,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
+    connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }
 })

@@ -81,7 +81,10 @@
           <el-option label="状态" value="status" />
         </el-select>
         <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-          <el-switch v-model="autoRefresh" active-text="自动刷新" />
+          <div v-if="app.sseConnected" class="sse-badge">
+            <span class="sse-dot"></span>
+            实时
+          </div>
           <el-button :icon="Refresh" :loading="app.loading" @click="app.refreshDashboard()" circle />
         </div>
       </div>
@@ -161,8 +164,6 @@ const newForm = reactive({ cwd: '', prompt: '', agentId: 'codex' })
 const searchQuery = ref('')
 const filterByLifecycle = ref('')
 const sortBy = ref('updatedAt')
-const autoRefresh = ref(true)
-let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const stats = computed(() => app.dashboard.stats)
 const agents = computed(() => app.dashboard.agents || [])
@@ -270,15 +271,9 @@ async function handleCreate() {
 
 onMounted(() => {
   app.refreshDashboard()
-  if (autoRefresh.value) {
-    refreshTimer = setInterval(() => {
-      app.refreshDashboard()
-    }, 10000)
-  }
 })
 
 onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -286,5 +281,31 @@ onUnmounted(() => {
 .dashboard-page {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.sse-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cf-success);
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: rgba(19, 168, 107, 0.08);
+  border: 1px solid rgba(19, 168, 107, 0.2);
+}
+
+.sse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cf-success);
+  animation: sse-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sse-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 </style>

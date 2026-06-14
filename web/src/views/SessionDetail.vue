@@ -9,6 +9,10 @@
         <el-tag v-if="summary" :type="statusTagType(summary.status, summary.ended)" size="small">
           {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
         </el-tag>
+        <div v-if="summary && summary.lastTurnStatus === 'inProgress'" class="live-indicator">
+          <span class="live-dot"></span>
+          <span>实时执行中</span>
+        </div>
         <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle />
       </div>
     </div>
@@ -131,7 +135,6 @@ const sessionId = route.params.id as string
 const promptText = ref('')
 const submitting = ref(false)
 const resuming = ref(false)
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const detail = computed(() => app.sessionDetails[sessionId])
 const summary = computed<SessionSummary | undefined>(() => {
@@ -247,17 +250,12 @@ async function handleApproval(approval: ApprovalRequest, accept: boolean) {
 
 onMounted(async () => {
   await refreshPage()
-  pollTimer = setInterval(async () => {
-    const s = summary.value
-    if (s?.ended) return
-    if (s?.lastTurnStatus === 'inProgress' || sessionApprovals.value.length > 0) {
-      await refreshPage()
-    }
-  }, 3000)
+  // Register this session as active so SSE events trigger targeted refresh
+  app.registerActiveSession(sessionId)
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  app.unregisterActiveSession(sessionId)
 })
 </script>
 
@@ -265,5 +263,31 @@ onUnmounted(() => {
 .session-detail-page {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cf-warning);
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cf-warning);
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
 }
 </style>

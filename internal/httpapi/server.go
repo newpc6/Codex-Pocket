@@ -124,17 +124,22 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check JWT token
+		// Check JWT token from Authorization header or query parameter
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			writeErrorMessage(w, http.StatusUnauthorized, "authorization header required")
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == authHeader {
-			writeErrorMessage(w, http.StatusUnauthorized, "invalid authorization format")
-			return
+		var token string
+		if authHeader != "" {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+			if token == authHeader {
+				writeErrorMessage(w, http.StatusUnauthorized, "invalid authorization format")
+				return
+			}
+		} else {
+			// Fallback to query parameter (needed for EventSource which doesn't support headers)
+			token = r.URL.Query().Get("token")
+			if token == "" {
+				writeErrorMessage(w, http.StatusUnauthorized, "authorization header required")
+				return
+			}
 		}
 
 		claims, valid := s.jwt.ValidateToken(token)

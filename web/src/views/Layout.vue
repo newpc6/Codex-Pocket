@@ -9,7 +9,7 @@
         </div>
       </div>
       <div class="header-right">
-        <div class="agent-status" :class="{ online: online }">
+        <div class="agent-status" :class="{ online: online, sse: app.sseConnected }">
           <span class="status-dot"></span>
           <span>{{ online ? 'Agent 在线' : 'Agent 离线' }}</span>
         </div>
@@ -103,11 +103,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter, type TabPaneName } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import { useTabsStore } from '../stores/tabs'
+import { sseService } from '../utils/sse'
+import { ElNotification } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -133,6 +135,7 @@ function handleMenuClick(index: string) {
 
 function onHeaderCommand(cmd: string) {
   if (cmd === 'logout') {
+    app.disconnectSSE()
     auth.logout()
     tabsStore.closeAllTabs()
     router.push('/login')
@@ -161,6 +164,33 @@ function onTabMenuClick(command: string, key: string) {
 function onRefresh() {
   app.refreshDashboard()
 }
+
+// SSE: connect on mount, listen for approval notifications
+onMounted(async () => {
+  await app.refreshDashboard()
+  app.connectSSE()
+
+  // Listen for new approval requests and show notification
+  sseService.on('approval.created', (event) => {
+    const payload = event.payload
+    const kind = payload?.kind || '审批请求'
+    const reason = payload?.reason || payload?.summary || '有新的审批请求需要处理'
+    ElNotification({
+      title: `新审批: ${kind}`,
+      message: reason,
+      type: 'warning',
+      duration: 8000,
+      position: 'top-right',
+      onClick: () => {
+        router.push('/approvals')
+      },
+    })
+  })
+})
+
+onUnmounted(() => {
+  app.disconnectSSE()
+})
 </script>
 
 <style scoped>
