@@ -96,6 +96,40 @@ func TestHasLocalSessionState(t *testing.T) {
 	}
 }
 
+func TestRecordMessageDeltaCreatesStreamingAgentItem(t *testing.T) {
+	sessionStore, err := New(nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID: "thread-1",
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "inProgress"},
+		},
+	})
+
+	sessionStore.RecordMessageDelta("thread-1", "turn-1", "item-1", "hello")
+	sessionStore.RecordMessageDelta("thread-1", "turn-1", "item-1", " world")
+
+	record, ok := sessionStore.SnapshotSession("thread-1")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing thread")
+	}
+	if got := record.Runtime.MessageDeltasByItem["item-1"]; got != "hello world" {
+		t.Fatalf("delta cache = %q, want %q", got, "hello world")
+	}
+	if len(record.Thread.Turns) != 1 || len(record.Thread.Turns[0].Items) != 1 {
+		t.Fatalf("streaming agent item not created")
+	}
+	if got, _ := record.Thread.Turns[0].Items[0]["type"].(string); got != "agentMessage" {
+		t.Fatalf("item type = %q, want agentMessage", got)
+	}
+	if got, _ := record.Thread.Turns[0].Items[0]["text"].(string); got != "hello" {
+		t.Fatalf("initial streaming item text = %q, want first delta snapshot", got)
+	}
+}
+
 func stringPtrForTest(value string) *string {
 	return &value
 }

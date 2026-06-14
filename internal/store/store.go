@@ -364,7 +364,7 @@ func (s *Store) RecordPlan(notification codex.TurnPlanUpdatedNotification) {
 	record.Runtime.LatestPlanByTurn[notification.TurnID] = notification
 }
 
-func (s *Store) RecordMessageDelta(threadID, itemID, delta string) {
+func (s *Store) RecordMessageDelta(threadID, turnID, itemID, delta string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -373,6 +373,30 @@ func (s *Store) RecordMessageDelta(threadID, itemID, delta string) {
 		return
 	}
 	record.Runtime.MessageDeltasByItem[itemID] += delta
+
+	if strings.TrimSpace(turnID) == "" || strings.TrimSpace(itemID) == "" {
+		return
+	}
+
+	for i := range record.Thread.Turns {
+		if record.Thread.Turns[i].ID != turnID {
+			continue
+		}
+
+		for j := range record.Thread.Turns[i].Items {
+			existingID, _ := record.Thread.Turns[i].Items[j]["id"].(string)
+			if existingID == itemID {
+				return
+			}
+		}
+
+		record.Thread.Turns[i].Items = append(record.Thread.Turns[i].Items, map[string]any{
+			"id":   itemID,
+			"type": "agentMessage",
+			"text": record.Runtime.MessageDeltasByItem[itemID],
+		})
+		return
+	}
 }
 
 func (s *Store) RecordItemStarted(threadID, turnID string, item map[string]any) {

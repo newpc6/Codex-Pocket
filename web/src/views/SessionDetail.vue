@@ -370,6 +370,14 @@ onMounted(async () => {
   scrollChatToBottom()
 })
 
+watch(summary, (next) => {
+  if (!next?.loaded || !isMobile.value) return
+  nextTick(() => {
+    const input = document.querySelector('.session-detail-page .input-area')
+    input?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+})
+
 onUnmounted(() => {
   app.unregisterActiveSession(sessionId)
   window.removeEventListener('resize', onResize)
@@ -717,7 +725,11 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .input-area {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   padding: 8px 10px;
+  box-shadow: 0 -6px 18px rgba(15, 46, 106, 0.08);
 }
 
 .session-detail-page.is-mobile .input-row :deep(.el-textarea__inner) {

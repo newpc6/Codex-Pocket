@@ -837,7 +837,7 @@ func (a *Agent) handleNotification(ctx context.Context, notification codex.Notif
 	case "agentMessage/delta":
 		var payload codex.AgentMessageDeltaNotification
 		if json.Unmarshal(notification.Params, &payload) == nil {
-			a.store.RecordMessageDelta(payload.ThreadID, payload.ItemID, payload.Delta)
+			a.store.RecordMessageDelta(payload.ThreadID, payload.TurnID, payload.ItemID, payload.Delta)
 		}
 	case "item/started":
 		var payload codex.ItemStartedNotification
