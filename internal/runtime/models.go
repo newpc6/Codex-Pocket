@@ -115,3 +115,21 @@ type PendingRequestView struct {
 	CreatedAt time.Time      `json:"createdAt"`
 	Params    map[string]any `json:"params"`
 }
+
+type DirectoryEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsDir      bool   `json:"isDir"`
+	IsParent   bool   `json:"isParent"`
+	IsHome     bool   `json:"isHome"`
+	IsRoot     bool   `json:"isRoot"`
+	IsReadable bool   `json:"isReadable"`
+}
+
+type DirectoryBrowseResult struct {
+	CurrentPath string           `json:"currentPath"`
+	ParentPath  string           `json:"parentPath"`
+	HomePath    string           `json:"homePath"`
+	Roots       []DirectoryEntry `json:"roots"`
+	Entries     []DirectoryEntry `json:"entries"`
+}

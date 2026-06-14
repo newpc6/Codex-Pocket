@@ -124,9 +124,12 @@
     <el-empty v-if="filteredAndSearchedSessions.length === 0 && !app.loading" description="没有匹配的会话" />
 
     <el-dialog v-model="showNewSession" title="新建会话" width="480px" :close-on-click-modal="false">
-      <el-form :model="newForm" label-width="80px">
+        <el-form :model="newForm" label-width="80px">
         <el-form-item label="工作目录">
-          <el-input v-model="newForm.cwd" placeholder="D:\project\myapp" />
+          <div class="cwd-field">
+            <el-input v-model="newForm.cwd" placeholder="D:\project\myapp" />
+            <el-button :icon="FolderOpened" @click="showDirectoryPicker = true">选择目录</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="提示词">
           <el-input v-model="newForm.prompt" type="textarea" :rows="3" placeholder="输入你的指令..." />
@@ -142,6 +145,12 @@
         <el-button type="primary" :loading="creating" @click="handleCreate">创建</el-button>
       </template>
     </el-dialog>
+
+    <DirectoryPickerDialog
+      v-model="showDirectoryPicker"
+      :initial-path="newForm.cwd"
+      @select="onDirectorySelected"
+    />
   </div>
 </template>
 
@@ -149,16 +158,18 @@
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore, type SessionSummary } from '../stores/app'
-import { Refresh, Plus } from '@element-plus/icons-vue'
+import { Refresh, Plus, FolderOpened } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
   formatTimestamp, statusTagType, statusLabel, lifecycleLabel,
   lifecycleTagType, truncateText, sessionDisplayName,
 } from '../utils/helpers'
+import DirectoryPickerDialog from '../components/DirectoryPickerDialog.vue'
 
 const router = useRouter()
 const app = useAppStore()
 const showNewSession = ref(false)
+const showDirectoryPicker = ref(false)
 const creating = ref(false)
 const newForm = reactive({ cwd: '', prompt: '', agentId: 'codex' })
 const searchQuery = ref('')
@@ -249,6 +260,10 @@ function goDetail(id: string) {
   router.push(`/session/${id}`)
 }
 
+function onDirectorySelected(path: string) {
+  newForm.cwd = path
+}
+
 async function handleCreate() {
   if (!newForm.cwd.trim() || !newForm.prompt.trim()) {
     ElMessage.warning('请填写工作目录和提示词')
@@ -288,6 +303,13 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.cwd-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
 }
 
 .filter-bar-right {
@@ -341,6 +363,10 @@ onUnmounted(() => {
     margin-left: 0;
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .cwd-field {
+    grid-template-columns: 1fr;
   }
 }
 </style>

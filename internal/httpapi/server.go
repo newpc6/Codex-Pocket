@@ -54,6 +54,7 @@ func (s *Server) routes() {
 	// API routes (auth required, applied via middleware)
 	s.mux.HandleFunc("/api/v1/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("/api/v1/events", s.handleEvents)
+	s.mux.HandleFunc("/api/v1/directories", s.handleDirectories)
 	s.mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	s.mux.HandleFunc("/api/v1/sessions/", s.handleSessionByID)
 	s.mux.HandleFunc("/api/v1/approvals", s.handleApprovals)
@@ -186,6 +187,21 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.agent.Dashboard())
+}
+
+func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+
+	result, err := s.agent.BrowseDirectories(r.URL.Query().Get("path"))
+	if err != nil {
+		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
