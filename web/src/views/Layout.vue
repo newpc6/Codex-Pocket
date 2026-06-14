@@ -488,9 +488,10 @@ onUnmounted(() => {
   flex: 1;
   padding: 20px;
   background-color: var(--cf-bg);
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* ---- Mobile ---- */

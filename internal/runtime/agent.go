@@ -504,6 +504,44 @@ func (a *Agent) ResumeSession(ctx context.Context, threadID string) (SessionSumm
 	return summary, nil
 }
 
+func (a *Agent) DetachSession(ctx context.Context, threadID string) error {
+	if isClaudeThreadID(threadID) {
+		return a.detachClaudeSession(ctx, threadID)
+	}
+
+	record, ok := a.store.SnapshotSession(threadID)
+	if ok && record.Loaded && len(record.Thread.Turns) > 0 {
+		lastTurn := record.Thread.Turns[len(record.Thread.Turns)-1]
+		if lastTurn.Status == "inProgress" {
+			if err := a.InterruptTurn(ctx, threadID, lastTurn.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	var response codex.ThreadUnsubscribeResponse
+	if err := a.client.Call(ctx, "thread/unsubscribe", map[string]any{
+		"threadId": threadID,
+	}, &response); err != nil {
+		return err
+	}
+
+	switch response.Status {
+	case "", "unsubscribed", "notSubscribed", "notLoaded":
+	default:
+		return fmt.Errorf("unexpected unsubscribe status %q", response.Status)
+	}
+
+	a.store.SetSessionEnded(threadID, false)
+	a.store.SetSessionManaged(threadID, false)
+	a.store.SetSessionLoaded(threadID, false)
+	_ = a.Refresh(ctx)
+	a.broker.Publish("session.detached", map[string]string{
+		"threadId": threadID,
+	})
+	return nil
+}
+
 func (a *Agent) EndSession(ctx context.Context, threadID string) error {
 	if isClaudeThreadID(threadID) {
 		return a.endClaudeSession(ctx, threadID)

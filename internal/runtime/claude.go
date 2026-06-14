@@ -2272,6 +2272,29 @@ func (a *Agent) endClaudeSession(ctx context.Context, threadID string) error {
 	return nil
 }
 
+func (a *Agent) detachClaudeSession(ctx context.Context, threadID string) error {
+	running, ok := a.getRunningClaudeTurn(threadID)
+	if ok {
+		running.Cancel()
+		if err := a.waitForClaudeTurnClear(ctx, threadID, running.TurnID); err != nil {
+			a.logger.Warn("claude turn did not clear before detach; forcing local stop", "threadId", threadID, "turnId", running.TurnID, "error", err)
+			a.forceStopClaudeTurn(threadID, running.TurnID, "session detached by user")
+		}
+	}
+	if session, ok := a.getClaudeSession(threadID); ok {
+		_ = session.close()
+		a.clearClaudeSession(threadID)
+	}
+	a.store.UpdateThreadStatus(threadID, codex.ThreadStatus{Type: "idle"})
+	a.store.SetSessionEnded(threadID, false)
+	a.store.SetSessionManaged(threadID, false)
+	a.store.SetSessionLoaded(threadID, false)
+	a.broker.Publish("session.detached", map[string]string{
+		"threadId": threadID,
+	})
+	return nil
+}
+
 func (a *Agent) archiveClaudeSession(threadID string) error {
 	if session, ok := a.getClaudeSession(threadID); ok {
 		_ = session.close()

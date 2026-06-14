@@ -304,6 +304,18 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, session)
+	case "detach":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		if err := s.agent.DetachSession(ctx, sessionID); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "end":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w)

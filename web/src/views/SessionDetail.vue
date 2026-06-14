@@ -25,6 +25,9 @@
               <el-dropdown-item v-if="summary.ended" command="resume">
                 <el-icon><Connection /></el-icon> 重新接管
               </el-dropdown-item>
+              <el-dropdown-item v-if="summary.loaded && !summary.ended" command="detach">
+                <el-icon><SwitchButton /></el-icon> 取消接管
+              </el-dropdown-item>
               <el-dropdown-item v-if="summary.loaded && !summary.ended" command="end">
                 <el-icon><SwitchButton /></el-icon> 结束会话
               </el-dropdown-item>
@@ -53,52 +56,58 @@
       <span>会话未接管，接管后可继续执行</span>
       <el-button type="primary" size="small" :loading="resuming" @click="handleResume">接管</el-button>
     </div>
+    <div v-if="summary && summary.loaded && !summary.ended" class="resume-banner">
+      <span>当前会话正在由 CodexFlow 托管。取消接管后，会话会回到已发现状态。</span>
+      <el-button size="small" :loading="detaching" @click="handleDetach">取消接管</el-button>
+    </div>
     <div v-if="summary && summary.ended" class="resume-banner">
       <span>会话已结束，可重新接管继续</span>
       <el-button type="primary" size="small" :loading="resuming" @click="handleResume">重新接管</el-button>
     </div>
 
-    <!-- 审批区域 -->
-    <div v-if="sessionApprovals.length > 0" class="approval-section">
-      <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
-        <div class="approval-info">
-          <div class="approval-kind">{{ approval.kind }}</div>
-          <div class="approval-reason">{{ approval.reason || approval.summary }}</div>
-        </div>
-        <div class="approval-actions">
-          <el-button
-            v-for="choice in approvalChoices(approval)"
-            :key="choice.value"
-            size="small"
-            :type="choice.type"
-            @click="handleApprovalChoice(approval, choice.value)"
-          >
-            {{ choice.label }}
-          </el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 对话记录（中间滚动区域） -->
-    <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
-      <div v-if="detail && detail.turns.length === 0" class="empty-hint">
-        {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
-      </div>
-
-      <template v-if="orderedTurns.length > 0">
-        <div class="chat-toolbar">
-          <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
-          <div style="display: flex; gap: 4px">
-            <el-button size="small" text @click="expandAll">展开</el-button>
-            <el-button size="small" text @click="collapseAll">折叠</el-button>
+    <div class="content-area">
+      <!-- 审批区域 -->
+      <div v-if="sessionApprovals.length > 0" class="approval-section">
+        <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
+          <div class="approval-info">
+            <div class="approval-kind">{{ approval.kind }}</div>
+            <div class="approval-reason">{{ approval.reason || approval.summary }}</div>
+          </div>
+          <div class="approval-actions">
+            <el-button
+              v-for="choice in approvalChoices(approval)"
+              :key="choice.value"
+              size="small"
+              :type="choice.type"
+              @click="handleApprovalChoice(approval, choice.value)"
+            >
+              {{ choice.label }}
+            </el-button>
           </div>
         </div>
-        <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
-      </template>
+      </div>
 
-      <div v-else-if="!app.loading && !detail" class="empty-hint">
-        <el-icon class="is-loading" :size="20"><Loading /></el-icon>
-        <span>正在加载…</span>
+      <!-- 对话记录（中间滚动区域） -->
+      <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
+        <div v-if="detail && detail.turns.length === 0" class="empty-hint">
+          {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
+        </div>
+
+        <template v-if="orderedTurns.length > 0">
+          <div class="chat-toolbar">
+            <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
+            <div style="display: flex; gap: 4px">
+              <el-button size="small" text @click="expandAll">展开</el-button>
+              <el-button size="small" text @click="collapseAll">折叠</el-button>
+            </div>
+          </div>
+          <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
+        </template>
+
+        <div v-else-if="!app.loading && !detail" class="empty-hint">
+          <el-icon class="is-loading" :size="20"><Loading /></el-icon>
+          <span>正在加载…</span>
+        </div>
       </div>
     </div>
 
@@ -147,6 +156,7 @@ const sessionId = route.params.id as string
 const promptText = ref('')
 const submitting = ref(false)
 const resuming = ref(false)
+const detaching = ref(false)
 const metaCollapsed = ref(true)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
@@ -220,6 +230,7 @@ async function refreshPage() {
 
 function onAction(cmd: string) {
   if (cmd === 'resume') handleResume()
+  else if (cmd === 'detach') handleDetach()
   else if (cmd === 'end') handleEnd()
 }
 
@@ -251,6 +262,18 @@ async function handleSubmit() {
     ElMessage.error(e.response?.data?.error || '发送失败')
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleDetach() {
+  detaching.value = true
+  try {
+    await ElMessageBox.confirm('确定要取消接管这个会话吗？', '确认')
+    await app.detachSession(sessionId)
+    ElMessage.success('已取消接管')
+  } catch { /* cancelled */ }
+  finally {
+    detaching.value = false
   }
 }
 
@@ -359,6 +382,7 @@ onUnmounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* ---- 顶部信息栏 ---- */
@@ -504,6 +528,14 @@ onUnmounted(() => {
   border-bottom: 1px solid #fde68a;
 }
 
+.content-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .approval-card {
   display: flex;
   align-items: center;
@@ -552,6 +584,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .chat-toolbar {

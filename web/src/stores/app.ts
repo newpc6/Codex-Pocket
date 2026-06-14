@@ -184,6 +184,12 @@ export const useAppStore = defineStore('app', () => {
     await loadSession(id)
   }
 
+  async function detachSession(id: string) {
+    await api.post(`/sessions/${id}/detach`)
+    await refreshDashboard()
+    await loadSession(id)
+  }
+
   async function archiveSession(id: string) {
     await api.post(`/sessions/${id}/archive`)
     delete sessionDetails.value[id]
@@ -342,7 +348,7 @@ export const useAppStore = defineStore('app', () => {
     dashboard, sessionDetails, selectedAgentId, loading, error,
     sseConnected, sseStatus, lastEvent, activeSessionIds,
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
-    refreshDashboard, loadSession, resumeSession, endSession, archiveSession,
+    refreshDashboard, loadSession, resumeSession, detachSession, endSession, archiveSession,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }
