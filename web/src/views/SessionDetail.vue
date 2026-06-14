@@ -91,14 +91,18 @@
         </p>
       </div>
 
-      <template v-if="activeTurn">
-        <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">当前运行中</div>
-        <TurnCard :turn="activeTurn" />
-      </template>
-
-      <template v-if="recentTurns.length > 0">
-        <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px; margin-top: 16px">最近的 turn</div>
-        <TurnCard v-for="turn in recentTurns" :key="turn.id" :turn="turn" />
+      <template v-if="orderedTurns.length > 0">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px">
+          <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">
+            对话记录
+            <el-tag size="small" type="info" round style="margin-left: 8px">{{ orderedTurns.length }}</el-tag>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <el-button size="small" @click="expandAll">全部展开</el-button>
+            <el-button size="small" @click="collapseAll">全部折叠</el-button>
+          </div>
+        </div>
+        <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
       </template>
     </div>
 
@@ -142,8 +146,23 @@ const orderedTurns = computed(() => {
   return [...detail.value.turns].reverse()
 })
 
-const activeTurn = computed(() => orderedTurns.value.find((t) => t.status === 'inProgress'))
-const recentTurns = computed(() => orderedTurns.value.filter((t) => t.status !== 'inProgress'))
+const turnRefs = ref<Record<string, any>>({})
+
+function setTurnRef(id: string, el: any) {
+  if (el) turnRefs.value[id] = el
+}
+
+function expandAll() {
+  Object.values(turnRefs.value).forEach((comp: any) => {
+    if (comp?.expanded !== undefined) comp.expanded = true
+  })
+}
+
+function collapseAll() {
+  Object.values(turnRefs.value).forEach((comp: any) => {
+    if (comp?.expanded !== undefined) comp.expanded = false
+  })
+}
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 

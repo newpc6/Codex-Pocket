@@ -208,42 +208,7 @@ html, body, #app {
   gap: 6px;
 }
 
-/* ---- Turn Card ---- */
-.turn-card {
-  background: var(--cf-card);
-  border-radius: var(--cf-radius);
-  padding: 16px;
-  border: 1px solid var(--cf-border);
-  margin-bottom: 12px;
-}
-
-.turn-card .turn-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.turn-item {
-  padding: 10px 12px;
-  border-radius: var(--cf-radius-sm);
-  margin-bottom: 8px;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
-}
-
-.turn-item .item-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.turn-item .item-body {
-  font-size: 13px;
-  color: var(--cf-text-secondary);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
+/* ---- Turn Card (styles in TurnCard.vue scoped) ---- */
 
 /* ---- Approval Card ---- */
 .approval-card {
