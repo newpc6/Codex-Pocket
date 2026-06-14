@@ -18,7 +18,7 @@ func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionS
 		lastTurnStatus = lastTurn.Status
 	}
 
-	effectiveLoaded := record.Loaded && !record.Runtime.Ended
+	effectiveLoaded := record.Managed && !record.Runtime.Ended
 	effectiveStatus := record.Thread.Status.Type
 	if record.Runtime.Ended {
 		effectiveStatus = "idle"
@@ -89,7 +89,7 @@ func deriveLifecycleStage(record store.SessionRecord, historyAvailable, runtimeA
 	switch {
 	case record.Runtime.Ended:
 		return "ended"
-	case record.Loaded:
+	case record.Managed:
 		return "managed"
 	case runtimeAvailable:
 		return "runtime_available"

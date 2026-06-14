@@ -29,6 +29,7 @@ type SessionBinding struct {
 type SessionRecord struct {
 	Thread  codex.Thread
 	Loaded  bool
+	Managed bool
 	Runtime SessionRuntime
 }
 
@@ -120,6 +121,7 @@ func (s *Store) ReplaceSessions(threads []codex.Thread, loaded map[string]bool) 
 
 		existing.Thread = mergeThread(existing.Thread, thread)
 		existing.Loaded = loaded[thread.ID]
+		existing.Managed = s.managedState[thread.ID]
 		if existing.Runtime.LatestDiffByTurn == nil {
 			existing.Runtime.LatestDiffByTurn = make(map[string]string)
 		}
@@ -153,6 +155,7 @@ func (s *Store) UpsertThread(thread codex.Thread) {
 		s.sessions[thread.ID] = record
 	}
 	record.Thread = mergeThread(record.Thread, thread)
+	record.Managed = s.managedState[thread.ID]
 }
 
 func (s *Store) SetSessionEnded(threadID string, ended bool) {
@@ -181,6 +184,8 @@ func (s *Store) SetSessionManaged(threadID string, managed bool) {
 	} else {
 		delete(s.managedState, threadID)
 	}
+	record := s.ensureSessionLocked(threadID)
+	record.Managed = managed
 	persisted := s.persistedStateLocked(threadID)
 	localState := s.localState
 	s.mu.Unlock()
@@ -314,6 +319,7 @@ func (s *Store) ensureSessionLocked(threadID string) *SessionRecord {
 
 	record = &SessionRecord{
 		Thread: codex.Thread{ID: threadID},
+		Managed: s.managedState[threadID],
 		Runtime: SessionRuntime{
 			LatestDiffByTurn:    make(map[string]string),
 			LatestPlanByTurn:    make(map[string]codex.TurnPlanUpdatedNotification),

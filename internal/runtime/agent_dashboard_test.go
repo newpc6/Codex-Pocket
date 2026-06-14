@@ -36,6 +36,7 @@ func TestDashboardLoadedSessionsExcludeEndedSessions(t *testing.T) {
 	})
 
 	sessionStore.SetSessionEnded("ended-thread", true)
+	sessionStore.SetSessionManaged("active-thread", true)
 
 	agent := &Agent{store: sessionStore}
 	dashboard := agent.Dashboard()
@@ -114,5 +115,39 @@ func TestSessionSummaryIncludesRuntimeAttachMode(t *testing.T) {
 	summary := toSessionSummary(record, 0)
 	if got := summary.RuntimeAttachMode; got != "resumed_existing" {
 		t.Fatalf("summary.RuntimeAttachMode = %q, want %q", got, "resumed_existing")
+	}
+}
+
+func TestSessionSummaryUsesManagedStateForLoadedFlag(t *testing.T) {
+	sessionStore, err := store.New(nil)
+	if err != nil {
+		t.Fatalf("create session store: %v", err)
+	}
+
+	sessionStore.ReplaceSessions([]codex.Thread{
+		{
+			ID:            "detached-thread",
+			ModelProvider: "OpenAI",
+			CreatedAt:     100,
+			UpdatedAt:     200,
+			Status:        codex.ThreadStatus{Type: "idle"},
+			CWD:           "/tmp/detached",
+		},
+	}, map[string]bool{
+		"detached-thread": true,
+	})
+	sessionStore.SetSessionManaged("detached-thread", false)
+
+	record, ok := sessionStore.SnapshotSession("detached-thread")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing record")
+	}
+
+	summary := toSessionSummary(record, 0)
+	if summary.Loaded {
+		t.Fatalf("detached session should not be reported as loaded when managed=false")
+	}
+	if got := summary.LifecycleStage; got == "managed" {
+		t.Fatalf("detached session lifecycle should not stay managed")
 	}
 }
