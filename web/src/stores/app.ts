@@ -106,6 +106,7 @@ export const useAppStore = defineStore('app', () => {
   // Track which sessions are currently being viewed (for targeted refresh)
   const activeSessionIds = ref<Set<string>>(new Set())
   const sessionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const activeSessionPollers = new Map<string, ReturnType<typeof setInterval>>()
   let sseHandlersBound = false
 
   const filteredSessions = computed(() => {
@@ -334,14 +335,38 @@ export const useAppStore = defineStore('app', () => {
     sseService.disconnect()
     for (const timer of sessionRefreshTimers.values()) clearTimeout(timer)
     sessionRefreshTimers.clear()
+    for (const poller of activeSessionPollers.values()) clearInterval(poller)
+    activeSessionPollers.clear()
   }
 
   function registerActiveSession(id: string) {
     activeSessionIds.value.add(id)
+    if (activeSessionPollers.has(id)) return
+    const poller = setInterval(async () => {
+      if (!activeSessionIds.value.has(id)) return
+      const summary = dashboard.value.sessions.find((s) => s.id === id)
+      const knownDetail = sessionDetails.value[id]
+      const aggressive = !!(summary?.loaded
+        || summary?.lastTurnStatus === 'inProgress'
+        || summary?.status === 'active'
+        || summary?.lifecycleStage === 'history_only'
+        || knownDetail?.summary?.lastTurnStatus === 'inProgress')
+      if (!aggressive && !knownDetail) return
+      await loadSession(id)
+      if (aggressive) {
+        await refreshDashboard()
+      }
+    }, 1500)
+    activeSessionPollers.set(id, poller)
   }
 
   function unregisterActiveSession(id: string) {
     activeSessionIds.value.delete(id)
+    const poller = activeSessionPollers.get(id)
+    if (poller) {
+      clearInterval(poller)
+      activeSessionPollers.delete(id)
+    }
   }
 
   return {

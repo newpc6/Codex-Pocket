@@ -173,6 +173,13 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string) (SessionDeta
 		return a.claudeSessionDetail(threadID)
 	}
 
+	record, snapshotOK := a.store.SnapshotSession(threadID)
+	if snapshotOK {
+		if err := a.refreshCodexThreadFromHistory(&record); err == nil {
+			a.store.UpsertThread(record.Thread)
+		}
+	}
+
 	var response codex.ThreadReadResponse
 	if err := a.client.Call(ctx, "thread/read", map[string]any{
 		"threadId":     threadID,
@@ -192,6 +199,11 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string) (SessionDeta
 	record, ok := a.store.SnapshotSession(threadID)
 	if !ok {
 		return SessionDetail{}, errors.New("session not found after refresh")
+	}
+
+	if err := a.refreshCodexThreadFromHistory(&record); err == nil {
+		a.store.UpsertThread(record.Thread)
+		record, _ = a.store.SnapshotSession(threadID)
 	}
 
 	pendingCount := pendingCountForThread(a.store.SnapshotPending(), threadID)
@@ -434,11 +446,111 @@ func (a *Agent) Refresh(ctx context.Context) error {
 			continue
 		}
 		threads[idx] = detail.Thread
+		_ = a.mergeCodexHistoryThread(&threads[idx])
 	}
 
 	a.store.ReplaceSessions(threads, loaded)
 	a.broker.Publish("sessions.refreshed", a.ListSessions())
 	return nil
+}
+
+func (a *Agent) refreshCodexThreadFromHistory(record *store.SessionRecord) error {
+	if record == nil || strings.TrimSpace(record.Thread.ID) == "" || isClaudeThreadID(record.Thread.ID) {
+		return nil
+	}
+	return a.mergeCodexHistoryThread(&record.Thread)
+}
+
+func (a *Agent) mergeCodexHistoryThread(thread *codex.Thread) error {
+	if thread == nil || strings.TrimSpace(thread.ID) == "" || isClaudeThreadID(thread.ID) {
+		return nil
+	}
+
+	turns, updatedAt, managedNow, err := readCodexTurns(*thread)
+	if err != nil {
+		return err
+	}
+	if len(turns) > 0 {
+		thread.Turns = mergeCodexTurns(thread.Turns, turns)
+	}
+	if updatedAt > thread.UpdatedAt {
+		thread.UpdatedAt = updatedAt
+	}
+	if strings.TrimSpace(thread.Status.Type) == "" || managedNow {
+		if managedNow {
+			thread.Status.Type = "active"
+		} else if hasInProgressTurn(thread.Turns) {
+			thread.Status.Type = "active"
+		} else {
+			thread.Status.Type = "idle"
+		}
+	}
+	return nil
+}
+
+func mergeCodexTurns(existing, incoming []codex.Turn) []codex.Turn {
+	if len(existing) == 0 {
+		return cloneCodexTurns(incoming)
+	}
+	if len(incoming) == 0 {
+		return cloneCodexTurns(existing)
+	}
+
+	merged := cloneCodexTurns(existing)
+	indexByID := make(map[string]int, len(merged))
+	for idx := range merged {
+		indexByID[merged[idx].ID] = idx
+	}
+	for _, turn := range incoming {
+		if idx, ok := indexByID[turn.ID]; ok {
+			merged[idx] = mergeCodexTurn(merged[idx], turn)
+			continue
+		}
+		merged = append(merged, turn)
+	}
+	return merged
+}
+
+func mergeCodexTurn(existing, incoming codex.Turn) codex.Turn {
+	merged := existing
+	if strings.TrimSpace(incoming.Status) != "" {
+		merged.Status = incoming.Status
+	}
+	if incoming.Error != nil {
+		merged.Error = incoming.Error
+	}
+	if incoming.StartedAt != nil {
+		merged.StartedAt = incoming.StartedAt
+	}
+	if incoming.CompletedAt != nil {
+		merged.CompletedAt = incoming.CompletedAt
+	}
+	if incoming.DurationMs != nil {
+		merged.DurationMs = incoming.DurationMs
+	}
+	if len(incoming.Items) > 0 {
+		merged.Items = incoming.Items
+	}
+	return merged
+}
+
+func cloneCodexTurns(turns []codex.Turn) []codex.Turn {
+	if len(turns) == 0 {
+		return nil
+	}
+	data, _ := json.Marshal(turns)
+	var cloned []codex.Turn
+	_ = json.Unmarshal(data, &cloned)
+	return cloned
+}
+
+func hasInProgressTurn(turns []codex.Turn) bool {
+	for _, turn := range turns {
+		if strings.TrimSpace(turn.Status) == "inProgress" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Agent) StartSession(ctx context.Context, cwd, prompt, requestedAgentID string) (SessionSummary, error) {

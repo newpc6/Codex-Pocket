@@ -9,6 +9,11 @@ import (
 	"codexflow/internal/store"
 )
 
+const (
+	maxTurnBodyChars      = 1200
+	maxTurnAuxiliaryChars = 1500
+)
+
 func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionSummary {
 	var lastTurnID string
 	var lastTurnStatus string
@@ -167,21 +172,21 @@ func normalizeItem(item map[string]any) TurnItem {
 		result.Body = codex.FirstUserText([]map[string]any{item})
 	case "agentMessage":
 		result.Title = "Agent"
-		result.Body, _ = item["text"].(string)
+		result.Body = truncateTurnText(stringValue(item["text"]), maxTurnBodyChars)
 	case "plan":
 		result.Title = "Plan"
-		result.Body, _ = item["text"].(string)
+		result.Body = truncateTurnText(stringValue(item["text"]), maxTurnBodyChars)
 	case "reasoning":
 		result.Title = "Reasoning"
 		if summary, ok := item["summary"].([]any); ok {
-			result.Body = joinAny(summary, "\n")
+			result.Body = truncateTurnText(joinAny(summary, "\n"), maxTurnBodyChars)
 		}
 	case "commandExecution":
 		result.Title = "Command"
-		result.Body, _ = item["command"].(string)
+		result.Body = truncateTurnText(stringValue(item["command"]), maxTurnBodyChars)
 		result.Status, _ = item["status"].(string)
 		if output, ok := item["aggregatedOutput"].(string); ok {
-			result.Auxiliary = output
+			result.Auxiliary = truncateTurnText(output, maxTurnAuxiliaryChars)
 		}
 		if cwd, ok := item["cwd"].(string); ok {
 			result.Metadata["cwd"] = cwd
@@ -192,7 +197,7 @@ func normalizeItem(item map[string]any) TurnItem {
 		if changes, ok := item["changes"].([]any); ok {
 			files := summarizeFileChanges(changes)
 			if len(files) > 0 {
-				result.Body = strings.Join(files, "\n")
+				result.Body = truncateTurnText(strings.Join(files, "\n"), maxTurnBodyChars)
 				result.Metadata["changeCount"] = fmt.Sprintf("%d", len(files))
 			} else {
 				result.Body = fmt.Sprintf("%d file changes", len(changes))
@@ -201,16 +206,16 @@ func normalizeItem(item map[string]any) TurnItem {
 		}
 	case "mcpToolCall":
 		result.Title = "MCP Tool"
-		result.Body = fmt.Sprintf("%v/%v", item["server"], item["tool"])
+		result.Body = truncateTurnText(fmt.Sprintf("%v/%v", item["server"], item["tool"]), maxTurnBodyChars)
 	case "dynamicToolCall":
 		result.Title = "Tool Call"
 		if title, ok := item["title"].(string); ok && strings.TrimSpace(title) != "" {
 			result.Title = strings.TrimSpace(title)
 		}
 		if summary, ok := item["summary"].(string); ok && strings.TrimSpace(summary) != "" {
-			result.Body = strings.TrimSpace(summary)
+			result.Body = truncateTurnText(strings.TrimSpace(summary), maxTurnBodyChars)
 		} else {
-			result.Body = fmt.Sprintf("%v:%v", item["namespace"], item["tool"])
+			result.Body = truncateTurnText(fmt.Sprintf("%v:%v", item["namespace"], item["tool"]), maxTurnBodyChars)
 		}
 		result.Status, _ = item["status"].(string)
 		if tool, ok := item["tool"].(string); ok && strings.TrimSpace(tool) != "" {
@@ -220,17 +225,17 @@ func normalizeItem(item map[string]any) TurnItem {
 			result.Metadata["progress"] = strings.TrimSpace(progress)
 		}
 		if output, ok := item["result"].(string); ok && strings.TrimSpace(output) != "" {
-			result.Auxiliary = strings.TrimSpace(output)
+			result.Auxiliary = truncateTurnText(strings.TrimSpace(output), maxTurnAuxiliaryChars)
 		}
 	case "collabAgentToolCall":
 		result.Title = "Delegation"
-		result.Body, _ = item["prompt"].(string)
+		result.Body = truncateTurnText(stringValue(item["prompt"]), maxTurnBodyChars)
 		result.Status, _ = item["status"].(string)
 		if title, ok := item["title"].(string); ok && strings.TrimSpace(title) != "" {
 			result.Metadata["title"] = strings.TrimSpace(title)
 		}
 		if output, ok := item["result"].(string); ok && strings.TrimSpace(output) != "" {
-			result.Auxiliary = strings.TrimSpace(output)
+			result.Auxiliary = truncateTurnText(strings.TrimSpace(output), maxTurnAuxiliaryChars)
 		}
 	default:
 		result.Title = strings.Title(itemType)
@@ -250,6 +255,19 @@ func summarizeUnknown(item map[string]any) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+func truncateTurnText(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	return strings.TrimSpace(text[:limit]) + "\n\n...[已截断]"
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func joinAny(values []any, sep string) string {
