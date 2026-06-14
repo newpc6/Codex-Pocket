@@ -54,7 +54,10 @@
           <div v-if="item.title" class="item-title">{{ item.title }}</div>
           <div v-if="item.body" class="item-body" :class="{ 'is-code': isCodeType(item.type) }">
             <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
-            <template v-else>{{ item.body }}<span v-if="isStreamingItem(item)" class="typing-cursor">|</span></template>
+            <div v-else class="markdown-body">
+              <VueMarkdown :source="item.body" :options="markdownOptions" />
+              <span v-if="isStreamingItem(item)" class="typing-cursor">|</span>
+            </div>
           </div>
           <div v-if="item.auxiliary" class="item-auxiliary">
             <el-collapse>
@@ -89,6 +92,7 @@
 import { ref, computed, watch } from 'vue'
 import { formatTimestamp, truncateText } from '../utils/helpers'
 import type { Turn } from '../stores/app'
+import VueMarkdown from 'vue-markdown-render'
 import {
   ArrowRight, List, Document, CircleCheckFilled, Clock,
   User, Monitor, VideoPlay, Edit, Link, SetUp, Share, InfoFilled, Cpu,
@@ -96,6 +100,12 @@ import {
 
 const props = defineProps<{ turn: Turn; index: number }>()
 const expanded = ref(props.turn.status === 'inProgress')
+const markdownOptions = {
+  html: false,
+  breaks: true,
+  linkify: true,
+  typographer: true,
+}
 
 watch(() => props.turn.status, (status) => {
   if (status === 'inProgress') expanded.value = true
@@ -500,11 +510,91 @@ function isStreamingItem(item: any): boolean {
 .item-body {
   font-size: 13px;
   color: var(--cf-text-secondary);
-  white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.6;
   max-height: 400px;
   overflow: auto;
+}
+
+.markdown-body {
+  white-space: normal;
+}
+
+.markdown-body :deep(*) {
+  word-break: break-word;
+}
+
+.markdown-body :deep(p),
+.markdown-body :deep(ul),
+.markdown-body :deep(ol),
+.markdown-body :deep(blockquote),
+.markdown-body :deep(pre),
+.markdown-body :deep(table) {
+  margin: 0 0 10px;
+}
+
+.markdown-body :deep(p:last-child),
+.markdown-body :deep(ul:last-child),
+.markdown-body :deep(ol:last-child),
+.markdown-body :deep(blockquote:last-child),
+.markdown-body :deep(pre:last-child),
+.markdown-body :deep(table:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 20px;
+}
+
+.markdown-body :deep(li + li) {
+  margin-top: 4px;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  margin: 0 0 8px;
+  color: var(--cf-text-heavy);
+  line-height: 1.4;
+}
+
+.markdown-body :deep(code) {
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.markdown-body :deep(pre) {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.markdown-body :deep(pre code) {
+  padding: 0;
+  background: transparent;
+}
+
+.markdown-body :deep(blockquote) {
+  padding-left: 12px;
+  border-left: 3px solid rgba(51, 136, 255, 0.35);
+  color: var(--cf-text-secondary);
+}
+
+.markdown-body :deep(a) {
+  color: var(--cf-primary);
+  text-decoration: none;
+}
+
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
 }
 
 .item-body.is-code pre {
