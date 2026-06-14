@@ -88,25 +88,27 @@
       </div>
 
       <!-- 对话记录（中间滚动区域） -->
-      <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
-        <div v-if="detail && detail.turns.length === 0" class="empty-hint">
-          {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
-        </div>
-
-        <template v-if="orderedTurns.length > 0">
-          <div class="chat-toolbar">
-            <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
-            <div style="display: flex; gap: 4px">
-              <el-button size="small" text @click="expandAll">展开</el-button>
-              <el-button size="small" text @click="collapseAll">折叠</el-button>
-            </div>
+      <div class="chat-shell">
+        <div class="chat-toolbar">
+          <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
+          <div style="display: flex; gap: 4px">
+            <el-button size="small" text @click="expandAll">展开</el-button>
+            <el-button size="small" text @click="collapseAll">折叠</el-button>
           </div>
-          <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
-        </template>
+        </div>
+        <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
+          <div v-if="detail && detail.turns.length === 0" class="empty-hint">
+            {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
+          </div>
 
-        <div v-else-if="!app.loading && !detail" class="empty-hint">
-          <el-icon class="is-loading" :size="20"><Loading /></el-icon>
-          <span>正在加载…</span>
+          <template v-if="orderedTurns.length > 0">
+            <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
+          </template>
+
+          <div v-else-if="!app.loading && !detail" class="empty-hint">
+            <el-icon class="is-loading" :size="20"><Loading /></el-icon>
+            <span>正在加载…</span>
+          </div>
         </div>
       </div>
     </div>
@@ -534,6 +536,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 14px 18px 0;
+  background: linear-gradient(180deg, #eef5fd 0%, #e7f0fb 100%);
+  border-radius: 18px 18px 0 0;
 }
 
 .approval-card {
@@ -577,22 +582,36 @@ onUnmounted(() => {
 }
 
 /* ---- 聊天区域 ---- */
-.chat-area {
+.chat-shell {
   flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-height: 0;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid #d9e6f7;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 24px rgba(24, 62, 122, 0.06);
 }
 
 .chat-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
   flex-shrink: 0;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid rgba(220, 230, 246, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 250, 255, 0.9) 100%);
+  border-radius: 18px 18px 0 0;
+}
+
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
 
 .empty-hint {
@@ -660,6 +679,37 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .chat-area {
   padding: 8px 10px;
+}
+
+.session-detail-page.is-mobile {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.session-detail-page.is-mobile .content-area {
+  flex: initial;
+  overflow: visible;
+  min-height: auto;
+  padding: 10px 0 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.session-detail-page.is-mobile .chat-shell {
+  min-height: auto;
+  overflow: visible;
+  border-radius: 14px;
+}
+
+.session-detail-page.is-mobile .chat-toolbar {
+  padding: 10px 12px 8px;
+}
+
+.session-detail-page.is-mobile .chat-area {
+  flex: initial;
+  overflow: visible;
+  min-height: auto;
 }
 
 .session-detail-page.is-mobile .input-area {

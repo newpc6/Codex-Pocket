@@ -209,6 +209,7 @@ function isStreamingItem(item: any): boolean {
   box-shadow: var(--cf-shadow-sm);
   overflow: hidden;
   transition: border-color 0.2s ease;
+  flex-shrink: 0;
 }
 
 .turn-card:hover {
@@ -512,8 +513,7 @@ function isStreamingItem(item: any): boolean {
   color: var(--cf-text-secondary);
   word-break: break-all;
   line-height: 1.6;
-  max-height: 400px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .markdown-body {

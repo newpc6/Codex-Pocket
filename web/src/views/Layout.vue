@@ -100,7 +100,7 @@
             </template>
           </el-tabs>
         </div>
-        <main class="page-content">
+        <main class="page-content" :class="{ 'is-session-detail-route': route.path.startsWith('/session/') }">
           <router-view v-slot="{ Component, route }">
             <transition name="fade-transform" mode="out-in">
               <component :is="Component" :key="route.path" />
@@ -488,10 +488,14 @@ onUnmounted(() => {
   flex: 1;
   padding: 20px;
   background-color: var(--cf-bg);
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.page-content.is-session-detail-route {
+  overflow: hidden;
 }
 
 /* ---- Mobile ---- */
@@ -559,6 +563,10 @@ onUnmounted(() => {
 
 .main-layout.is-mobile .page-content {
   padding: 10px;
+}
+
+.main-layout.is-mobile .page-content.is-session-detail-route {
+  overflow: auto;
 }
 
 .tab-label {
