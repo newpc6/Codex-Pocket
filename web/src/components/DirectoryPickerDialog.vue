@@ -3,63 +3,66 @@
     :model-value="modelValue"
     title="选择工作目录"
     width="720px"
+    class="directory-picker-dialog"
     :close-on-click-modal="false"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <div class="picker-toolbar">
-      <el-button :icon="House" @click="openHome" text>Home</el-button>
-      <el-button :icon="Top" @click="openParent" text :disabled="!browser.parentPath">上级</el-button>
-      <el-button :icon="Refresh" @click="refreshCurrent" text :loading="loading">刷新</el-button>
-      <el-input
-        v-model="pathInput"
-        placeholder="输入绝对路径"
-        class="path-input"
-        @keyup.enter="openPath(pathInput)"
-      >
-        <template #append>
-          <el-button @click="openPath(pathInput)">打开</el-button>
-        </template>
-      </el-input>
-    </div>
-
-    <div class="picker-current">
-      <span class="picker-label">当前目录</span>
-      <code class="picker-path">{{ browser.currentPath || '-' }}</code>
-    </div>
-
-    <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" style="margin-bottom: 12px" />
-
-    <div class="picker-grid">
-      <div class="picker-roots">
-        <div class="pane-title">快捷位置</div>
-        <div
-          v-for="entry in quickEntries"
-          :key="entry.path"
-          class="location-item"
-          :class="{ active: entry.path === browser.currentPath }"
-          @click="openPath(entry.path)"
+    <div class="picker-shell">
+      <div class="picker-toolbar">
+        <el-button :icon="House" @click="openHome" text>Home</el-button>
+        <el-button :icon="Top" @click="openParent" text :disabled="!browser.parentPath">上级</el-button>
+        <el-button :icon="Refresh" @click="refreshCurrent" text :loading="loading">刷新</el-button>
+        <el-input
+          v-model="pathInput"
+          placeholder="输入绝对路径"
+          class="path-input"
+          @keyup.enter="openPath(pathInput)"
         >
-          <el-icon><Folder /></el-icon>
-          <span>{{ entry.name }}</span>
-        </div>
+          <template #append>
+            <el-button @click="openPath(pathInput)">打开</el-button>
+          </template>
+        </el-input>
       </div>
 
-      <div class="picker-list">
-        <div class="pane-title">目录</div>
-        <div v-if="browser.entries.length === 0 && !loading" class="empty-state">当前目录下没有可浏览的子目录</div>
-        <div
-          v-for="entry in browser.entries"
-          :key="entry.path"
-          class="directory-item"
-          :class="{ selected: selectedPath === entry.path, disabled: !entry.isReadable }"
-          @click="selectPath(entry.path)"
-          @dblclick="entry.isReadable && openPath(entry.path)"
-        >
-          <div class="directory-main">
+      <div class="picker-current">
+        <span class="picker-label">当前目录</span>
+        <code class="picker-path">{{ browser.currentPath || '-' }}</code>
+      </div>
+
+      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" style="margin-bottom: 12px" />
+
+      <div class="picker-grid">
+        <div class="picker-roots">
+          <div class="pane-title">快捷位置</div>
+          <div
+            v-for="entry in quickEntries"
+            :key="entry.path"
+            class="location-item"
+            :class="{ active: entry.path === browser.currentPath }"
+            @click="openPath(entry.path)"
+          >
             <el-icon><Folder /></el-icon>
             <span>{{ entry.name }}</span>
           </div>
-          <el-tag v-if="!entry.isReadable" type="info" size="small">不可读</el-tag>
+        </div>
+
+        <div class="picker-list">
+          <div class="pane-title">目录</div>
+          <div v-if="browser.entries.length === 0 && !loading" class="empty-state">当前目录下没有可浏览的子目录</div>
+          <div
+            v-for="entry in browser.entries"
+            :key="entry.path"
+            class="directory-item"
+            :class="{ selected: selectedPath === entry.path, disabled: !entry.isReadable }"
+            @click="selectPath(entry.path)"
+            @dblclick="entry.isReadable && openPath(entry.path)"
+          >
+            <div class="directory-main">
+              <el-icon><Folder /></el-icon>
+              <span>{{ entry.name }}</span>
+            </div>
+            <el-tag v-if="!entry.isReadable" type="info" size="small">不可读</el-tag>
+          </div>
         </div>
       </div>
     </div>
@@ -185,6 +188,29 @@ function confirmSelection() {
 </script>
 
 <style scoped>
+.directory-picker-dialog :deep(.el-dialog) {
+  max-height: min(78vh, 680px);
+  display: flex;
+  flex-direction: column;
+}
+
+.directory-picker-dialog :deep(.el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.directory-picker-dialog :deep(.el-dialog__footer) {
+  flex-shrink: 0;
+}
+
+.picker-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(64vh, 560px);
+}
+
 .picker-toolbar {
   display: flex;
   align-items: center;
@@ -223,7 +249,9 @@ function confirmSelection() {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 12px;
-  min-height: 360px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .picker-roots,
@@ -231,7 +259,8 @@ function confirmSelection() {
   border: 1px solid var(--cf-border-light);
   border-radius: 8px;
   background: #fff;
-  overflow: auto;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .pane-title {
@@ -297,9 +326,17 @@ function confirmSelection() {
 }
 
 @media (max-width: 768px) {
+  .directory-picker-dialog :deep(.el-dialog) {
+    width: min(92vw, 720px) !important;
+    max-height: 84vh;
+  }
+
+  .picker-shell {
+    max-height: 68vh;
+  }
+
   .picker-grid {
     grid-template-columns: 1fr;
-    min-height: 0;
   }
 }
 </style>
