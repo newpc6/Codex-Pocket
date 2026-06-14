@@ -19,6 +19,7 @@ dist/
 .gocache/
 coverage.out
 .coverprofile
+*.exe
 
 # Xcode user-specific files
 **/xcuserdata/
@@ -33,3 +34,11 @@ coverage.out
 .codexflow/
 codexflow-state.db
 codexflow-state.db-*
+
+# Node/Yarn
+node_modules/
+.yarn/
+.pnp.*
+
+# Config with secrets
+codexflow.yaml

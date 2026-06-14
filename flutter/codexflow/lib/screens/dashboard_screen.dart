@@ -39,6 +39,9 @@ class DashboardScreen extends StatelessWidget {
           (session) => session.lifecycleStage == 'runtime_available',
         )
         .toList();
+    final discoveredSessions = filteredSessions
+        .where((session) => session.lifecycleStage == 'discovered')
+        .toList();
     final historySessions = filteredSessions
         .where(
           (session) => session.lifecycleStage == 'history_only',
@@ -239,6 +242,12 @@ class DashboardScreen extends StatelessWidget {
                         ? '这些 Claude 会话当前在本机 runtime 中可见。接管后，CodexFlow 才能继续刷新状态、处理中断和后续操作。'
                         : '这些会话当前未接管，但运行时仍可继续接管。',
                     sessions: runtimeSessions,
+                  ),
+                if (discoveredSessions.isNotEmpty)
+                  _SessionGroup(
+                    title: '已发现',
+                    helper: '这些会话已被 CodexFlow 发现，但尚未接管。点击会话可查看详情，接管后即可继续执行。',
+                    sessions: discoveredSessions,
                   ),
                 if (historySessions.isNotEmpty)
                   _SessionGroup(

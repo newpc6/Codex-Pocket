@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"codexflow/internal/config"
 	"codexflow/internal/runtime"
 )
 
@@ -20,25 +21,37 @@ type Server struct {
 	logger  *slog.Logger
 	mux     *http.ServeMux
 	uploads *imageUploadStore
+	jwt     *JWTService
+	cfg     config.Config
 }
 
-func NewServer(agent *runtime.Agent, logger *slog.Logger) *Server {
+func NewServer(agent *runtime.Agent, logger *slog.Logger, cfg config.Config) *Server {
 	server := &Server{
 		agent:   agent,
 		logger:  logger,
 		mux:     http.NewServeMux(),
 		uploads: newImageUploadStore(),
+		jwt:     NewJWTService(cfg),
+		cfg:     cfg,
 	}
 	server.routes()
 	return server
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.withLogging(s.withCORS(s.mux))
+	var handler http.Handler = s.mux
+	handler = s.withAuth(handler)
+	handler = s.withCORS(handler)
+	handler = s.withLogging(handler)
+	return handler
 }
 
 func (s *Server) routes() {
+	// Public routes (no auth required)
 	s.mux.HandleFunc("/healthz", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/auth/login", s.handleLogin)
+
+	// API routes (auth required, applied via middleware)
 	s.mux.HandleFunc("/api/v1/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("/api/v1/events", s.handleEvents)
 	s.mux.HandleFunc("/api/v1/sessions", s.handleSessions)
@@ -46,6 +59,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/approvals", s.handleApprovals)
 	s.mux.HandleFunc("/api/v1/approvals/", s.handleApprovalByID)
 	s.mux.HandleFunc("/api/v1/uploads/image", s.handleImageUpload)
+
+	// Static file serving for web UI
+	if s.cfg.WebDistPath != "" {
+		s.serveStaticFiles()
+	}
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +71,108 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"ok":        true,
 		"timestamp": time.Now(),
 	})
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+
+	var request struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	if !s.cfg.Authenticate(request.Username, request.Password) {
+		writeErrorMessage(w, http.StatusUnauthorized, "invalid username or password")
+		return
+	}
+
+	token, err := s.jwt.GenerateToken(request.Username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":    token,
+		"username": request.Username,
+	})
+}
+
+func (s *Server) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Public paths that don't require authentication
+		publicPaths := map[string]bool{
+			"/healthz":           true,
+			"/api/v1/auth/login": true,
+		}
+		if publicPaths[path] {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Static files also don't require auth at HTTP level (SPA handles login redirect)
+		if !strings.HasPrefix(path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check JWT token
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			writeErrorMessage(w, http.StatusUnauthorized, "authorization header required")
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == authHeader {
+			writeErrorMessage(w, http.StatusUnauthorized, "invalid authorization format")
+			return
+		}
+
+		claims, valid := s.jwt.ValidateToken(token)
+		if !valid {
+			writeErrorMessage(w, http.StatusUnauthorized, "invalid or expired token")
+			return
+		}
+
+		// Add username to request context
+		ctx := context.WithValue(r.Context(), "username", claims.Username)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *Server) serveStaticFiles() {
+	distPath := s.cfg.WebDistPath
+	fs := http.FileServer(http.Dir(distPath))
+
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Don't interfere with API routes
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Try to serve the file, fall back to index.html for SPA routing
+		filePath := filepath.Join(distPath, filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			fs.ServeHTTP(w, r)
+			return
+		}
+
+		// SPA fallback: serve index.html
+		r.URL.Path = "/"
+		fs.ServeHTTP(w, r)
+	})
+
+	s.logger.Info("serving web UI from", "path", distPath)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
