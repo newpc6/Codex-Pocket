@@ -35,6 +35,12 @@ coverage.out
 codexflow-state.db
 codexflow-state.db-*
 
+# Flutter generated files
+flutter/codexflow/linux/flutter/generated_*
+flutter/codexflow/windows/flutter/generated_*
+flutter/codexflow/macos/Flutter/GeneratedPluginRegistrant.swift
+flutter/codexflow/pubspec.lock
+
 # Node/Yarn
 node_modules/
 .yarn/

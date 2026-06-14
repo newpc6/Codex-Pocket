@@ -1,7 +1,8 @@
 <template>
-  <div class="page-container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-      <div style="display: flex; align-items: center; gap: 12px">
+  <div class="dashboard-page">
+    <div class="page-title">
+      <div class="page-title-heading">会话管理</div>
+      <div class="page-title-extra">
         <el-dropdown @command="onAgentSwitch">
           <el-button>
             <el-icon><Connection /></el-icon>
@@ -17,46 +18,79 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button type="primary" :icon="Plus" @click="showNewSession = true">新建会话</el-button>
       </div>
-      <el-button :icon="Refresh" :loading="app.loading" @click="app.refreshDashboard()">刷新</el-button>
     </div>
 
     <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--cf-primary)">{{ stats.totalSessions }}</div>
-        <div class="stat-label">总会话</div>
+      <div class="stat-card tone-blue" @click="filterByLifecycle = ''">
+        <div class="stat-head">
+          <span>总会话</span>
+          <el-button type="primary" link size="small">查看</el-button>
+        </div>
+        <div class="stat-value">{{ stats.totalSessions }}</div>
+        <div class="stat-desc">所有已发现的会话</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--cf-success)">{{ stats.loadedSessions }}</div>
-        <div class="stat-label">已加载</div>
+      <div class="stat-card tone-green" @click="filterByLifecycle = 'managed'">
+        <div class="stat-head">
+          <span>已接管</span>
+          <el-button type="primary" link size="small">筛选</el-button>
+        </div>
+        <div class="stat-value">{{ stats.loadedSessions }}</div>
+        <div class="stat-desc">正在由 CodexFlow 托管</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--cf-info)">{{ stats.activeSessions }}</div>
-        <div class="stat-label">运行中</div>
+      <div class="stat-card tone-cyan" @click="filterByLifecycle = 'active'">
+        <div class="stat-head">
+          <span>运行中</span>
+          <el-button type="primary" link size="small">筛选</el-button>
+        </div>
+        <div class="stat-value">{{ stats.activeSessions }}</div>
+        <div class="stat-desc">当前正在执行任务</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color: var(--cf-warning)">{{ stats.pendingApprovals }}</div>
-        <div class="stat-label">待审批</div>
+      <div class="stat-card tone-orange" @click="$router.push('/approvals')">
+        <div class="stat-head">
+          <span>待审批</span>
+          <el-button type="primary" link size="small">进入</el-button>
+        </div>
+        <div class="stat-value">{{ stats.pendingApprovals }}</div>
+        <div class="stat-desc">等待审批处理的请求</div>
       </div>
     </div>
 
     <el-alert v-if="app.error" :title="app.error" type="error" show-icon :closable="false" style="margin-bottom: 16px" />
-
     <el-alert v-if="app.filteredApprovals.length > 0" type="warning" :closable="false" style="margin-bottom: 16px">
-      <template #title>当前有 {{ app.filteredApprovals.length }} 个审批等待处理。</template>
+      <template #title>当前有 {{ app.filteredApprovals.length }} 个审批等待处理。
+        <el-button type="primary" link @click="$router.push('/approvals')">前往审批</el-button>
+      </template>
     </el-alert>
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-      <div style="font-size: 16px; font-weight: 600">
-        列表 <span style="font-size: 12px; color: var(--cf-text-secondary)">{{ app.filteredSessions.length }}</span>
+    <el-card shadow="never" style="border-radius: var(--cf-radius); margin-bottom: 18px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <el-input v-model="searchQuery" placeholder="搜索会话名称、路径、分支..." prefix-icon="Search" clearable
+          class="search-box" />
+        <el-select v-model="filterByLifecycle" placeholder="生命周期" clearable style="width: 140px">
+          <el-option label="已接管" value="managed" />
+          <el-option label="已结束" value="ended" />
+          <el-option label="可接管" value="runtime_available" />
+          <el-option label="已发现" value="discovered" />
+          <el-option label="历史" value="history_only" />
+        </el-select>
+        <el-select v-model="sortBy" placeholder="排序" style="width: 140px">
+          <el-option label="最近更新" value="updatedAt" />
+          <el-option label="名称" value="name" />
+          <el-option label="状态" value="status" />
+        </el-select>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <el-switch v-model="autoRefresh" active-text="自动刷新" />
+          <el-button :icon="Refresh" :loading="app.loading" @click="app.refreshDashboard()" circle />
+        </div>
       </div>
-      <el-button type="primary" size="small" :icon="Plus" @click="showNewSession = true">新建</el-button>
-    </div>
+    </el-card>
 
     <template v-for="(group, key) in visibleGroups" :key="key">
-      <div style="margin-top: 16px; margin-bottom: 8px">
-        <span style="font-size: 14px; font-weight: 600">{{ groupTitles[key as keyof typeof groupTitles] }}</span>
-        <span style="font-size: 12px; color: var(--cf-text-secondary); margin-left: 8px">{{ group.length }}</span>
+      <div style="margin-top: 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">{{ groupTitles[key as keyof typeof groupTitles] }}</span>
+        <el-tag size="small" type="info">{{ group.length }}</el-tag>
       </div>
       <p style="font-size: 13px; color: var(--cf-text-secondary); margin-bottom: 10px">{{ groupHelpers[key as keyof typeof groupHelpers] }}</p>
       <div v-for="session in group" :key="session.id" class="session-item" @click="goDetail(session.id)">
@@ -84,9 +118,9 @@
       </div>
     </template>
 
-    <el-empty v-if="app.filteredSessions.length === 0 && !app.loading" description="暂时没有会话" />
+    <el-empty v-if="filteredAndSearchedSessions.length === 0 && !app.loading" description="没有匹配的会话" />
 
-    <el-dialog v-model="showNewSession" title="新建会话" width="480px">
+    <el-dialog v-model="showNewSession" title="新建会话" width="480px" :close-on-click-modal="false">
       <el-form :model="newForm" label-width="80px">
         <el-form-item label="工作目录">
           <el-input v-model="newForm.cwd" placeholder="D:\project\myapp" />
@@ -109,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore, type SessionSummary } from '../stores/app'
 import { Refresh, Plus } from '@element-plus/icons-vue'
@@ -124,6 +158,11 @@ const app = useAppStore()
 const showNewSession = ref(false)
 const creating = ref(false)
 const newForm = reactive({ cwd: '', prompt: '', agentId: 'codex' })
+const searchQuery = ref('')
+const filterByLifecycle = ref('')
+const sortBy = ref('updatedAt')
+const autoRefresh = ref(true)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const stats = computed(() => app.dashboard.stats)
 const agents = computed(() => app.dashboard.agents || [])
@@ -148,11 +187,51 @@ const groupHelpers: Record<string, string> = {
   historyOnly: '这些只是已发现的真实会话记录。先接管，才可以继续执行。',
 }
 
+const filteredAndSearchedSessions = computed(() => {
+  let sessions = app.filteredSessions
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    sessions = sessions.filter((s) =>
+      sessionDisplayName(s).toLowerCase().includes(q) ||
+      s.cwd?.toLowerCase().includes(q) ||
+      s.branch?.toLowerCase().includes(q) ||
+      s.preview?.toLowerCase().includes(q)
+    )
+  }
+  if (filterByLifecycle.value) {
+    if (filterByLifecycle.value === 'active') {
+      sessions = sessions.filter((s) => s.status === 'active' || s.lastTurnStatus === 'inProgress')
+    } else {
+      sessions = sessions.filter((s) => s.lifecycleStage === filterByLifecycle.value)
+    }
+  }
+  if (sortBy.value === 'name') {
+    sessions = [...sessions].sort((a, b) => sessionDisplayName(a).localeCompare(sessionDisplayName(b)))
+  } else if (sortBy.value === 'status') {
+    sessions = [...sessions].sort((a, b) => a.status.localeCompare(b.status))
+  }
+  return sessions
+})
+
 const visibleGroups = computed(() => {
-  const groups = app.sessionGroups
+  const sessions = filteredAndSearchedSessions.value
+  const groups: Record<string, SessionSummary[]> = {
+    managed: [],
+    ended: [],
+    runtimeAvailable: [],
+    discovered: [],
+    historyOnly: [],
+  }
+  for (const s of sessions) {
+    const key = s.lifecycleStage === 'runtime_available' ? 'runtimeAvailable'
+      : s.lifecycleStage === 'history_only' ? 'historyOnly'
+      : s.lifecycleStage
+    if (groups[key]) groups[key].push(s)
+    else groups.discovered.push(s)
+  }
   const result: Record<string, SessionSummary[]> = {}
-  for (const [key, sessions] of Object.entries(groups)) {
-    if (sessions.length > 0) result[key] = sessions
+  for (const [key, val] of Object.entries(groups)) {
+    if (val.length > 0) result[key] = val
   }
   return result
 })
@@ -191,5 +270,21 @@ async function handleCreate() {
 
 onMounted(() => {
   app.refreshDashboard()
+  if (autoRefresh.value) {
+    refreshTimer = setInterval(() => {
+      app.refreshDashboard()
+    }, 10000)
+  }
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
+
+<style scoped>
+.dashboard-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+</style>

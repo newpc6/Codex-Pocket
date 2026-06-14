@@ -1,14 +1,23 @@
 <template>
-  <div class="page-container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-      <div style="font-size: 18px; font-weight: 600">审批中心</div>
-      <el-button :icon="Refresh" :loading="app.loading" @click="app.refreshDashboard()">刷新</el-button>
+  <div class="approvals-page">
+    <div class="page-title">
+      <div class="page-title-heading">审批中心</div>
+      <div class="page-title-extra">
+        <el-input v-model="searchQuery" placeholder="搜索审批..." prefix-icon="Search" clearable class="search-box" />
+        <el-select v-model="filterKind" placeholder="类型" clearable style="width: 130px">
+          <el-option label="命令审批" value="command" />
+          <el-option label="文件变更" value="fileChange" />
+          <el-option label="权限请求" value="permissions" />
+          <el-option label="用户输入" value="userInput" />
+        </el-select>
+        <el-button :icon="Refresh" :loading="app.loading" @click="app.refreshDashboard()" circle />
+      </div>
     </div>
 
-    <el-alert v-if="app.filteredApprovals.length === 0 && !app.loading" type="info" :closable="false"
+    <el-alert v-if="filteredApprovals.length === 0 && !app.loading" type="info" :closable="false"
       description="当前没有待处理的审批。" />
 
-    <div v-for="approval in app.filteredApprovals" :key="approval.id" class="approval-card">
+    <div v-for="approval in filteredApprovals" :key="approval.id" class="approval-card">
       <div style="display: flex; justify-content: space-between; align-items: flex-start">
         <div style="flex: 1">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
@@ -20,7 +29,8 @@
           <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px">
             {{ approval.reason || approval.summary }}
           </div>
-          <div v-if="approval.kind === 'command' && approval.params?.command" style="font-size: 12px; font-family: monospace; color: var(--cf-text-secondary); background: #f5f5f5; padding: 6px 10px; border-radius: 6px; margin-top: 6px">
+          <div v-if="approval.kind === 'command' && approval.params?.command"
+            style="font-size: 12px; font-family: monospace; color: var(--cf-text-secondary); background: #f5f5f5; padding: 6px 10px; border-radius: 6px; margin-top: 6px">
             {{ approval.params.command }}
           </div>
           <div v-if="approval.kind === 'fileChange' && approval.params?.changes" style="font-size: 12px; margin-top: 6px">
@@ -42,13 +52,31 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAppStore, type ApprovalRequest } from '../stores/app'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatTimestamp, sessionDisplayName } from '../utils/helpers'
 
 const app = useAppStore()
+const searchQuery = ref('')
+const filterKind = ref('')
+
+const filteredApprovals = computed(() => {
+  let list = app.filteredApprovals
+  if (filterKind.value) {
+    list = list.filter((a) => a.kind === filterKind.value)
+  }
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter((a) =>
+      (a.reason || '').toLowerCase().includes(q) ||
+      (a.summary || '').toLowerCase().includes(q) ||
+      sessionName(a.threadId).toLowerCase().includes(q)
+    )
+  }
+  return list
+})
 
 function kindTagType(kind: string): string {
   switch (kind) {
@@ -103,3 +131,10 @@ onMounted(() => {
   app.refreshDashboard()
 })
 </script>
+
+<style scoped>
+.approvals-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+</style>

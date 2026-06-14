@@ -1,22 +1,27 @@
 <template>
-  <div class="page-container">
-    <div style="margin-bottom: 16px">
-      <el-button :icon="ArrowLeft" @click="$router.push('/')">返回</el-button>
+  <div class="session-detail-page">
+    <div class="page-title">
+      <div class="page-title-heading">
+        <el-button :icon="ArrowLeft" @click="$router.push('/')" text style="margin-right: 8px" />
+        {{ summary ? displayName(summary) : '会话详情' }}
+      </div>
+      <div class="page-title-extra">
+        <el-tag v-if="summary" :type="statusTagType(summary.status, summary.ended)" size="small">
+          {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
+        </el-tag>
+        <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle />
+      </div>
     </div>
 
     <div v-if="summary" class="card">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px">
         <div>
-          <div style="font-size: 16px; font-weight: 600">{{ displayName(summary) }}</div>
+          <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">{{ displayName(summary) }}</div>
           <div style="font-size: 12px; color: var(--cf-text-secondary); font-family: monospace; margin-top: 4px">
             {{ summary.cwd }}
           </div>
         </div>
-        <el-tag :type="statusTagType(summary.status, summary.ended)" size="small">
-          {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
-        </el-tag>
       </div>
-
       <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px">
         <el-tag size="small" :type="summary.loaded ? 'success' : ''">
           {{ summary.loaded ? '已接管' : '未接管' }}
@@ -28,11 +33,9 @@
           {{ lifecycleLabel(summary.lifecycleStage) }}
         </el-tag>
       </div>
-
       <div v-if="summary.preview" style="font-size: 13px; color: var(--cf-text-secondary); margin-bottom: 12px">
         {{ truncateText(summary.preview, 200) }}
       </div>
-
       <div style="font-size: 11px; color: var(--cf-text-secondary)">
         更新 {{ formatTimestamp(summary.updatedAt) }}
       </div>
@@ -49,7 +52,7 @@
     </div>
 
     <div v-if="summary && summary.loaded && !summary.ended" class="card">
-      <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px">发送指令</div>
+      <div style="font-size: 15px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">发送指令</div>
       <el-input v-model="promptText" type="textarea" :rows="3" placeholder="输入指令..." :disabled="submitting" />
       <div style="display: flex; gap: 8px; margin-top: 12px">
         <el-button type="primary" :loading="submitting" @click="handleSubmit"
@@ -64,7 +67,7 @@
     </div>
 
     <div v-if="sessionApprovals.length > 0" style="margin-top: 16px">
-      <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px">待审批</div>
+      <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">待审批</div>
       <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start">
           <div>
@@ -89,12 +92,12 @@
       </div>
 
       <template v-if="activeTurn">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px">当前运行中</div>
+        <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px">当前运行中</div>
         <TurnCard :turn="activeTurn" />
       </template>
 
       <template v-if="recentTurns.length > 0">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px; margin-top: 16px">最近的 turn</div>
+        <div style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy); margin-bottom: 12px; margin-top: 16px">最近的 turn</div>
         <TurnCard v-for="turn in recentTurns" :key="turn.id" :turn="turn" />
       </template>
     </div>
@@ -111,6 +114,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore, type ApprovalRequest, type SessionSummary } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import {
   formatTimestamp, statusTagType, statusLabel, lifecycleLabel,
   lifecycleTagType, truncateText, sessionDisplayName,
@@ -237,3 +241,10 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
 </script>
+
+<style scoped>
+.session-detail-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+</style>
