@@ -5,18 +5,23 @@ export interface SSEEvent {
 }
 
 type EventHandler = (event: SSEEvent) => void
+export type SSEStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+type StatusHandler = (status: SSEStatus) => void
 
 class SSEService {
   private source: EventSource | null = null
   private handlers: Map<string, Set<EventHandler>> = new Map()
+  private statusHandlers: Set<StatusHandler> = new Set()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private maxReconnectDelay = 30000
   private disposed = false
+  private status: SSEStatus = 'disconnected'
 
   connect() {
     if (this.source) return
     this.disposed = false
+    this.setStatus(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
 
     const token = localStorage.getItem('cf_token')
     // EventSource doesn't support custom headers, so we pass token as query param
@@ -28,6 +33,7 @@ class SSEService {
 
     this.source.onopen = () => {
       this.reconnectAttempts = 0
+      this.setStatus('connected')
     }
 
     this.source.onerror = () => {
@@ -90,6 +96,8 @@ class SSEService {
     }
     this.source?.close()
     this.source = null
+    this.reconnectAttempts = 0
+    this.setStatus('disconnected')
   }
 
   on(eventType: string, handler: EventHandler) {
@@ -101,6 +109,15 @@ class SSEService {
 
   off(eventType: string, handler: EventHandler) {
     this.handlers.get(eventType)?.delete(handler)
+  }
+
+  onStatus(handler: StatusHandler) {
+    this.statusHandlers.add(handler)
+    handler(this.status)
+  }
+
+  offStatus(handler: StatusHandler) {
+    this.statusHandlers.delete(handler)
   }
 
   private emit(type: string, event: SSEEvent) {
@@ -120,11 +137,18 @@ class SSEService {
 
   private scheduleReconnect() {
     if (this.disposed) return
+    this.setStatus('reconnecting')
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.maxReconnectDelay)
     this.reconnectAttempts++
     this.reconnectTimer = setTimeout(() => {
       this.connect()
     }, delay)
+  }
+
+  private setStatus(status: SSEStatus) {
+    if (this.status === status) return
+    this.status = status
+    this.statusHandlers.forEach((handler) => handler(status))
   }
 }
 

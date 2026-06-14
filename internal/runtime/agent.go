@@ -95,6 +95,13 @@ func (a *Agent) Start(ctx context.Context) error {
 	return nil
 }
 
+func (a *Agent) Stop() error {
+	if a.runCancel != nil {
+		a.runCancel()
+	}
+	return a.store.Close()
+}
+
 func (a *Agent) restoreManagedSessions(ctx context.Context) {
 	for _, threadID := range a.store.ManagedSessionIDs() {
 		resumeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)

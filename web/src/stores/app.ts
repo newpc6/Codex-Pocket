@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../utils/api'
-import { sseService, type SSEEvent } from '../utils/sse'
+import { sseService, type SSEEvent, type SSEStatus } from '../utils/sse'
 
 export interface AgentInfo {
   id: string
@@ -36,6 +36,7 @@ export interface ApprovalRequest {
   kind: string
   reason: string
   summary: string
+  choices: string[]
   createdAt: string
   params: Record<string, any>
 }
@@ -99,10 +100,13 @@ export const useAppStore = defineStore('app', () => {
   const loading = ref(false)
   const error = ref('')
   const sseConnected = ref(false)
+  const sseStatus = ref<SSEStatus>('disconnected')
   const lastEvent = ref<SSEEvent | null>(null)
 
   // Track which sessions are currently being viewed (for targeted refresh)
   const activeSessionIds = ref<Set<string>>(new Set())
+  const sessionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  let sseHandlersBound = false
 
   const filteredSessions = computed(() => {
     return dashboard.value.sessions.filter((s) => s.agentId === selectedAgentId.value)
@@ -155,6 +159,16 @@ export const useAppStore = defineStore('app', () => {
     } catch (e: any) {
       error.value = e.response?.data?.error || e.message
     }
+  }
+
+  function scheduleSessionLoad(id: string, delay = 120) {
+    if (!id) return
+    const existing = sessionRefreshTimers.get(id)
+    if (existing) clearTimeout(existing)
+    sessionRefreshTimers.set(id, setTimeout(async () => {
+      sessionRefreshTimers.delete(id)
+      await loadSession(id)
+    }, delay))
   }
 
   async function resumeSession(id: string) {
@@ -214,8 +228,18 @@ export const useAppStore = defineStore('app', () => {
   // ---- SSE Integration ----
 
   function connectSSE() {
+    bindSSEHandlers()
     sseService.connect()
-    sseConnected.value = true
+  }
+
+  function bindSSEHandlers() {
+    if (sseHandlersBound) return
+    sseHandlersBound = true
+
+    sseService.onStatus((status) => {
+      sseStatus.value = status
+      sseConnected.value = status === 'connected'
+    })
 
     // Wildcard handler: update lastEvent for any event
     sseService.on('*', (event: SSEEvent) => {
@@ -230,14 +254,15 @@ export const useAppStore = defineStore('app', () => {
       // Refresh session detail if it's a turn-related notification for an active session
       const threadId = event.payload?.params?.threadId as string
       if (threadId && activeSessionIds.value.has(threadId)) {
-        await loadSession(threadId)
+        const delay = method === 'agentMessage/delta' ? 80 : 120
+        scheduleSessionLoad(threadId, delay)
       }
 
       // Always refresh dashboard on significant events
       if ([
-        'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated',
+        'turn/started', 'turn/completed',
         'thread/started', 'thread/status/changed', 'thread/closed',
-        'agentMessage/delta', 'item/started', 'item/completed',
+        'item/started', 'item/completed',
       ].includes(method)) {
         await refreshDashboard()
       }
@@ -301,7 +326,8 @@ export const useAppStore = defineStore('app', () => {
 
   function disconnectSSE() {
     sseService.disconnect()
-    sseConnected.value = false
+    for (const timer of sessionRefreshTimers.values()) clearTimeout(timer)
+    sessionRefreshTimers.clear()
   }
 
   function registerActiveSession(id: string) {
@@ -314,7 +340,7 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     dashboard, sessionDetails, selectedAgentId, loading, error,
-    sseConnected, lastEvent, activeSessionIds,
+    sseConnected, sseStatus, lastEvent, activeSessionIds,
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
     refreshDashboard, loadSession, resumeSession, endSession, archiveSession,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,

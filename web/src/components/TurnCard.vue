@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { formatTimestamp, truncateText } from '../utils/helpers'
 import type { Turn } from '../stores/app'
 import {
@@ -96,6 +96,10 @@ import {
 
 const props = defineProps<{ turn: Turn; index: number }>()
 const expanded = ref(props.turn.status === 'inProgress')
+
+watch(() => props.turn.status, (status) => {
+  if (status === 'inProgress') expanded.value = true
+})
 
 const turnStatusType = computed(() => {
   switch (props.turn.status) {

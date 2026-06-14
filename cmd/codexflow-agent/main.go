@@ -35,6 +35,9 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
+		if err := agent.Stop(); err != nil {
+			logger.Warn("failed to stop agent cleanly", "error", err)
+		}
 		_ = server.Shutdown(context.Background())
 	}()
 

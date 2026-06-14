@@ -66,14 +66,21 @@
           <div class="approval-reason">{{ approval.reason || approval.summary }}</div>
         </div>
         <div class="approval-actions">
-          <el-button size="small" type="success" @click="handleApproval(approval, true)">批准</el-button>
-          <el-button size="small" type="danger" @click="handleApproval(approval, false)">拒绝</el-button>
+          <el-button
+            v-for="choice in approvalChoices(approval)"
+            :key="choice.value"
+            size="small"
+            :type="choice.type"
+            @click="handleApprovalChoice(approval, choice.value)"
+          >
+            {{ choice.label }}
+          </el-button>
         </div>
       </div>
     </div>
 
     <!-- 对话记录（中间滚动区域） -->
-    <div class="chat-area" ref="chatAreaRef">
+    <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
       <div v-if="detail && detail.turns.length === 0" class="empty-hint">
         {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
       </div>
@@ -97,6 +104,10 @@
 
     <!-- 底部输入区域（固定） -->
     <div v-if="summary && summary.loaded && !summary.ended" class="input-area">
+      <div v-if="isStreamingReply" class="streaming-hint">
+        <span class="live-dot"></span>
+        Codex 正在回复
+      </div>
       <div class="input-row">
         <el-input
           v-model="promptText"
@@ -138,6 +149,7 @@ const submitting = ref(false)
 const resuming = ref(false)
 const metaCollapsed = ref(true)
 const chatAreaRef = ref<HTMLElement | null>(null)
+const followLiveOutput = ref(true)
 
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
@@ -154,6 +166,12 @@ const sessionApprovals = computed(() => app.filteredApprovals.filter((a) => a.th
 const orderedTurns = computed(() => {
   if (!detail.value) return []
   return [...detail.value.turns].reverse()
+})
+const runningTurn = computed(() => orderedTurns.value.find((turn) => turn.status === 'inProgress'))
+const isStreamingReply = computed(() => {
+  const turn = runningTurn.value
+  if (!turn) return false
+  return turn.items?.some((item) => item.type === 'agentMessage' && item.body)
 })
 
 const turnRefs = ref<Record<string, any>>({})
@@ -176,13 +194,23 @@ function collapseAll() {
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
-// Auto-scroll to bottom when new turns arrive
-watch(orderedTurns, () => {
+function scrollChatToBottom() {
   nextTick(() => {
     if (chatAreaRef.value) {
       chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
     }
   })
+}
+
+function onChatScroll() {
+  const el = chatAreaRef.value
+  if (!el) return
+  followLiveOutput.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+// Follow live Codex output while the user stays near the latest message.
+watch(orderedTurns, () => {
+  if (followLiveOutput.value || runningTurn.value) scrollChatToBottom()
 }, { deep: true })
 
 async function refreshPage() {
@@ -245,14 +273,56 @@ async function handleEnd() {
   } catch { /* cancelled */ }
 }
 
-async function handleApproval(approval: ApprovalRequest, accept: boolean) {
+function approvalChoices(approval: ApprovalRequest) {
+  if (approval.kind === 'userInput') {
+    return [{ value: 'answer', label: '回复', type: 'primary' }]
+  }
+  const choices = approval.choices?.length ? approval.choices : ['accept', 'decline']
+  return choices.map((choice) => ({
+    value: choice,
+    label: choiceLabel(choice),
+    type: choiceType(choice),
+  }))
+}
+
+function choiceLabel(choice: string) {
+  switch (choice) {
+    case 'accept': return '批准本次'
+    case 'acceptForSession': return '本会话批准'
+    case 'decline': return '拒绝'
+    case 'deny': return '拒绝'
+    case 'cancel': return '取消'
+    case 'session': return '允许本会话'
+    case 'turn': return '允许本轮'
+    case 'answer': return '回复'
+    default: return choice
+  }
+}
+
+function choiceType(choice: string) {
+  switch (choice) {
+    case 'accept':
+    case 'acceptForSession':
+    case 'session':
+    case 'turn':
+      return 'success'
+    case 'decline':
+    case 'deny':
+    case 'cancel':
+      return 'danger'
+    default:
+      return 'primary'
+  }
+}
+
+async function handleApprovalChoice(approval: ApprovalRequest, decision: string) {
   try {
     let result: Record<string, any>
-    if (approval.kind === 'command' || approval.kind === 'fileChange') {
-      result = { decision: accept ? 'accept' : 'deny' }
+    if (approval.kind === 'command' || approval.kind === 'fileChange' || approval.kind === 'generic') {
+      result = { decision }
     } else if (approval.kind === 'permissions') {
-      result = accept
-        ? { permissions: approval.params?.permissions || {}, scope: 'session' }
+      result = decision === 'session' || decision === 'turn'
+        ? { permissions: approval.params?.permissions || {}, scope: decision }
         : { permissions: null, scope: null }
     } else if (approval.kind === 'userInput') {
       const { value } = await ElMessageBox.prompt('请输入回复', '用户输入', {
@@ -262,16 +332,17 @@ async function handleApproval(approval: ApprovalRequest, accept: boolean) {
       const questionId = approval.params?.questions?.[0]?.id || 'reply'
       result = { answers: { [questionId]: { answers: [value] } } }
     } else {
-      result = { decision: accept ? 'accept' : 'deny' }
+      result = { decision }
     }
     await app.resolveApproval(approval.id, result)
-    ElMessage.success(accept ? '已批准' : '已拒绝')
+    ElMessage.success('审批已提交')
   } catch { /* cancelled */ }
 }
 
 onMounted(async () => {
   await refreshPage()
   app.registerActiveSession(sessionId)
+  scrollChatToBottom()
 })
 
 onUnmounted(() => {
@@ -508,6 +579,16 @@ onUnmounted(() => {
   background: var(--cf-card);
   border-top: 1px solid var(--cf-border-light);
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.streaming-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--cf-warning);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .input-row {

@@ -43,8 +43,15 @@
           </div>
         </div>
         <div style="display: flex; gap: 8px; margin-left: 16px">
-          <el-button size="small" type="success" @click="handleApproval(approval, true)">批准</el-button>
-          <el-button size="small" type="danger" @click="handleApproval(approval, false)">拒绝</el-button>
+          <el-button
+            v-for="choice in approvalChoices(approval)"
+            :key="choice.value"
+            size="small"
+            :type="choice.type"
+            @click="handleApprovalChoice(approval, choice.value)"
+          >
+            {{ choice.label }}
+          </el-button>
         </div>
       </div>
     </div>
@@ -103,14 +110,56 @@ function sessionName(threadId: string): string {
   return s ? sessionDisplayName(s) : threadId?.substring(0, 8)
 }
 
-async function handleApproval(approval: ApprovalRequest, accept: boolean) {
+function approvalChoices(approval: ApprovalRequest) {
+  if (approval.kind === 'userInput') {
+    return [{ value: 'answer', label: '回复', type: 'primary' }]
+  }
+  const choices = approval.choices?.length ? approval.choices : ['accept', 'decline']
+  return choices.map((choice) => ({
+    value: choice,
+    label: choiceLabel(choice),
+    type: choiceType(choice),
+  }))
+}
+
+function choiceLabel(choice: string) {
+  switch (choice) {
+    case 'accept': return '批准本次'
+    case 'acceptForSession': return '本会话批准'
+    case 'decline': return '拒绝'
+    case 'deny': return '拒绝'
+    case 'cancel': return '取消'
+    case 'session': return '允许本会话'
+    case 'turn': return '允许本轮'
+    case 'answer': return '回复'
+    default: return choice
+  }
+}
+
+function choiceType(choice: string) {
+  switch (choice) {
+    case 'accept':
+    case 'acceptForSession':
+    case 'session':
+    case 'turn':
+      return 'success'
+    case 'decline':
+    case 'deny':
+    case 'cancel':
+      return 'danger'
+    default:
+      return 'primary'
+  }
+}
+
+async function handleApprovalChoice(approval: ApprovalRequest, decision: string) {
   try {
     let result: Record<string, any>
-    if (approval.kind === 'command' || approval.kind === 'fileChange') {
-      result = { decision: accept ? 'accept' : 'deny' }
+    if (approval.kind === 'command' || approval.kind === 'fileChange' || approval.kind === 'generic') {
+      result = { decision }
     } else if (approval.kind === 'permissions') {
-      result = accept
-        ? { permissions: approval.params?.permissions || {}, scope: 'session' }
+      result = decision === 'session' || decision === 'turn'
+        ? { permissions: approval.params?.permissions || {}, scope: decision }
         : { permissions: null, scope: null }
     } else if (approval.kind === 'userInput') {
       const { value } = await ElMessageBox.prompt('请输入回复', '用户输入', {
@@ -120,10 +169,10 @@ async function handleApproval(approval: ApprovalRequest, accept: boolean) {
       const questionId = approval.params?.questions?.[0]?.id || 'reply'
       result = { answers: { [questionId]: { answers: [value] } } }
     } else {
-      result = { decision: accept ? 'accept' : 'deny' }
+      result = { decision }
     }
     await app.resolveApproval(approval.id, result)
-    ElMessage.success(accept ? '已批准' : '已拒绝')
+    ElMessage.success('审批已提交')
   } catch { /* cancelled */ }
 }
 

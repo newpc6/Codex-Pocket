@@ -92,6 +92,13 @@ func New(localState *LocalStateDB) (*Store, error) {
 	}, nil
 }
 
+func (s *Store) Close() error {
+	if s == nil || s.localState == nil {
+		return nil
+	}
+	return s.localState.Close()
+}
+
 func (s *Store) ReplaceSessions(threads []codex.Thread, loaded map[string]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

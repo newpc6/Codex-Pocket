@@ -12,9 +12,9 @@
         </div>
       </div>
       <div class="header-right">
-        <div class="agent-status" :class="{ online: online, sse: app.sseConnected }">
+        <div class="agent-status" :class="{ online: online, connected: app.sseConnected, reconnecting: app.sseStatus === 'reconnecting' || app.sseStatus === 'connecting' }">
           <span class="status-dot"></span>
-          <span v-if="!isMobile">{{ online ? 'Agent 在线' : 'Agent 离线' }}</span>
+          <span v-if="!isMobile">{{ statusText }}</span>
         </div>
         <div v-if="!isMobile" class="user-meta">
           <div class="user-name">{{ auth.username }}</div>
@@ -114,7 +114,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter, type TabPaneName } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import { useTabsStore } from '../stores/tabs'
@@ -143,6 +143,13 @@ const currentRoute = computed(() => {
 })
 const online = computed(() => app.isAgentOnline)
 const approvalCount = computed(() => app.filteredApprovals.length)
+const statusText = computed(() => {
+  if (!online.value) return 'Agent 离线'
+  if (app.sseStatus === 'connected') return '实时已连接'
+  if (app.sseStatus === 'connecting') return '实时连接中'
+  if (app.sseStatus === 'reconnecting') return '实时重连中'
+  return 'Agent 在线'
+})
 
 watch(() => route.path, () => {
   tabsStore.addTab(route)
@@ -162,7 +169,7 @@ function onHeaderCommand(cmd: string) {
   }
 }
 
-function onTabRemove(name: TabPaneName) {
+function onTabRemove(name: string | number) {
   const key = String(name)
   tabsStore.removeTab(key)
   const current = tabsStore.currentTab
@@ -292,6 +299,20 @@ onUnmounted(() => {
 .agent-status.online .status-dot {
   background: #10b981;
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.agent-status.reconnecting .status-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.agent-status.connected .status-dot {
+  animation: status-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.72); opacity: 0.65; }
 }
 
 .user-meta {
