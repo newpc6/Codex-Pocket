@@ -17,7 +17,7 @@ struct SettingsView: View {
                   .font(.system(.headline, design: .rounded, weight: .semibold))
                   .foregroundStyle(Palette.ink)
 
-                TextField("http://192.168.1.4:4318", text: $model.baseURLString)
+                TextField("http://192.168.1.4:7318", text: $model.baseURLString)
                   .textInputAutocapitalization(.never)
                   .autocorrectionDisabled()
                   .focused($isBaseURLFocused)
@@ -31,7 +31,7 @@ struct SettingsView: View {
                       .stroke(isBaseURLFocused ? Palette.softBlue.opacity(0.35) : Palette.line, lineWidth: 1)
                   }
 
-                Text("填写 Mac 可被手机访问到的局域网地址，例如 `http://192.168.1.4:4318`。不要填 `0.0.0.0`，真机上也不要填 `127.0.0.1`。")
+                Text("填写 Mac 可被手机访问到的局域网地址，例如 `http://192.168.1.4:7318`。不要填 `0.0.0.0`，真机上也不要填 `127.0.0.1`。")
                   .font(.system(.footnote, design: .rounded))
                   .foregroundStyle(Palette.mutedInk)
 

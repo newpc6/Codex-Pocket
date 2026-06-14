@@ -156,7 +156,7 @@ go run ./cmd/codexflow-agent
 默认监听地址：
 
 ```text
-127.0.0.1:4318
+127.0.0.1:7318
 ```
 
 可选环境变量：
@@ -201,20 +201,20 @@ codexflow-agent.exe
 同机使用：
 
 ```text
-Agent: 127.0.0.1:4318
-Client: http://127.0.0.1:4318
+Agent: 127.0.0.1:7318
+Client: http://127.0.0.1:7318
 ```
 
 跨设备使用：
 
 ```bash
-CODEXFLOW_LISTEN_ADDR=0.0.0.0:4318 go run ./cmd/codexflow-agent
+CODEXFLOW_LISTEN_ADDR=0.0.0.0:7318 go run ./cmd/codexflow-agent
 ```
 
 然后在客户端里填写运行 Agent 那台机器的局域网 IP，例如：
 
 ```text
-http://192.168.1.10:4318
+http://192.168.1.10:7318
 ```
 
 #### 通过 Tailscale Service 远程访问（可选）
@@ -225,15 +225,15 @@ http://192.168.1.10:4318
 
 ```text
 https://codexflow.<tailnet>.ts.net/
-  /healthz -> http://127.0.0.1:4318/healthz
-  /api     -> http://127.0.0.1:4318/api
+  /healthz -> http://127.0.0.1:7318/healthz
+  /api     -> http://127.0.0.1:7318/api
   /        -> http://127.0.0.1:8088
 ```
 
 先启动 Agent：
 
 ```bash
-CODEXFLOW_LISTEN_ADDR=127.0.0.1:4318 go run ./cmd/codexflow-agent
+CODEXFLOW_LISTEN_ADDR=127.0.0.1:7318 go run ./cmd/codexflow-agent
 ```
 
 再启动一个静态文件服务承载 Flutter Web 构建产物，例如：
@@ -247,8 +247,8 @@ python3 -m http.server 8088 --bind 127.0.0.1
 
 ```bash
 tailscale serve --service svc:codexflow --bg --https 443 http://127.0.0.1:8088
-tailscale serve --service svc:codexflow --bg --https 443 --set-path /api http://127.0.0.1:4318/api
-tailscale serve --service svc:codexflow --bg --https 443 --set-path /healthz http://127.0.0.1:4318/healthz
+tailscale serve --service svc:codexflow --bg --https 443 --set-path /api http://127.0.0.1:7318/api
+tailscale serve --service svc:codexflow --bg --https 443 --set-path /healthz http://127.0.0.1:7318/healthz
 ```
 
 如果 Tailscale 提示需要管理员批准，需要先在 Tailscale 控制台批准这台机器作为 `svc:codexflow` 的 service proxy。批准后，在客户端里填写：
@@ -262,8 +262,8 @@ https://codexflow.<tailnet>.ts.net
 ### 4. 验证 Agent 是否正常
 
 ```bash
-curl http://127.0.0.1:4318/healthz
-curl http://127.0.0.1:4318/api/v1/dashboard
+curl http://127.0.0.1:7318/healthz
+curl http://127.0.0.1:7318/api/v1/dashboard
 ```
 
 如果正常，你会拿到健康检查结果和真实会话列表。
@@ -341,24 +341,24 @@ http://127.0.0.1:8080
 如果是同一台 Mac 上跑模拟器：
 
 ```text
-http://127.0.0.1:4318
+http://127.0.0.1:7318
 ```
 
 如果是 `iPhone 真机`、`Android 模拟器`、`Android 真机`，或者你要给其他设备访问，建议让 Agent 监听局域网：
 
 ```bash
-CODEXFLOW_LISTEN_ADDR=0.0.0.0:4318 go run ./cmd/codexflow-agent
+CODEXFLOW_LISTEN_ADDR=0.0.0.0:7318 go run ./cmd/codexflow-agent
 ```
 
 然后在 App 的 `Settings` 页面填入你 Mac 的局域网 IP，例如：
 
 ```text
-http://192.168.1.10:4318
+http://192.168.1.10:7318
 ```
 
 补充说明：
 
-- `Flutter Web / Chrome`：如果页面和 Agent 在同一台 Mac 上，通常可直接使用 `http://127.0.0.1:4318`
+- `Flutter Web / Chrome`：如果页面和 Agent 在同一台 Mac 上，通常可直接使用 `http://127.0.0.1:7318`
 - `Android 模拟器 / 真机`：不要填 `127.0.0.1`，要填你 Mac 的局域网 IP
 - 当前 Agent 已加入浏览器跨域支持，Flutter Web 可以直接访问本地 Agent
 - 如果 Android release APK 报 `ClientException with SocketException: Failed host lookup`，请确认 `android/app/src/main/AndroidManifest.xml` 声明了 `android.permission.INTERNET`。Debug/Profile manifest 中的权限不会自动覆盖 release 包。

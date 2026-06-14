@@ -64,11 +64,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   CodexTextField(
                     controller: _controller,
-                    hintText: 'http://192.168.1.4:4318',
+                    hintText: 'http://192.168.1.4:7318',
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '填写 Mac 可被手机访问到的局域网地址，例如 `http://192.168.1.4:4318`。不要填 `0.0.0.0`，真机上也不要填 `127.0.0.1`。',
+                    '填写 Mac 可被手机访问到的局域网地址，例如 `http://192.168.1.4:7318`。不要填 `0.0.0.0`，真机上也不要填 `127.0.0.1`。',
                     style: roundedTextStyle(
                       size: 13,
                       weight: FontWeight.w500,

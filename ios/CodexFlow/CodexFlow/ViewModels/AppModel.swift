@@ -22,7 +22,7 @@ final class AppModel: ObservableObject {
   private var noticeTask: Task<Void, Never>?
 
   init() {
-    let saved = UserDefaults.standard.string(forKey: baseURLKey) ?? "http://127.0.0.1:4318"
+    let saved = UserDefaults.standard.string(forKey: baseURLKey) ?? "http://127.0.0.1:7318"
     baseURLString = saved
     dashboard = .placeholder
     sessionDetails = [:]
