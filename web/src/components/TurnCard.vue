@@ -203,6 +203,8 @@ function isStreamingItem(item: any): boolean {
 <style scoped>
 .turn-card {
   background: var(--cf-card);
+  width: 100%;
+  align-self: stretch;
   border-radius: var(--cf-radius);
   border: 1px solid var(--cf-border);
   margin-bottom: 10px;
@@ -294,6 +296,7 @@ function isStreamingItem(item: any): boolean {
 .turn-body {
   padding: 0 16px 16px;
   border-top: 1px solid var(--cf-border-light);
+  width: 100%;
 }
 
 .turn-section {

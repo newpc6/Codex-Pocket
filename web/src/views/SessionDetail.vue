@@ -381,8 +381,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   overflow: hidden;
   min-height: 0;
 }
@@ -532,6 +533,7 @@ onUnmounted(() => {
 
 .content-area {
   flex: 1;
+  width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -584,6 +586,7 @@ onUnmounted(() => {
 /* ---- 聊天区域 ---- */
 .chat-shell {
   flex: 1;
+  width: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -607,6 +610,7 @@ onUnmounted(() => {
 .chat-area {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 12px 16px 16px;
   display: flex;
   flex-direction: column;
