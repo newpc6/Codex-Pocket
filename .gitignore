@@ -7,7 +7,7 @@
 *.swp
 *.swo
 *~
-
+*.bat
 # Local caches and temporary build data
 .cache/
 .xcode/
