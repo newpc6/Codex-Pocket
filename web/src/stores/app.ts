@@ -172,6 +172,19 @@ export const useAppStore = defineStore('app', () => {
         }
         return
       }
+      if (!options?.appendHistory && sessionDetails.value[id]) {
+        const existing = sessionDetails.value[id]
+        const keepCount = res.data.offset - existing.offset
+        if (keepCount > 0 && existing.turns.length >= keepCount) {
+          sessionDetails.value[id] = {
+            ...res.data,
+            turns: [...existing.turns.slice(0, keepCount), ...res.data.turns],
+            offset: existing.offset,
+            hasMoreHistory: existing.offset > 0,
+          }
+          return
+        }
+      }
       sessionDetails.value[id] = res.data
     } catch (e: any) {
       error.value = e.response?.data?.error || e.message

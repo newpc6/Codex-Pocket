@@ -1,6 +1,5 @@
 <template>
   <div class="session-detail-page" :class="{ 'is-mobile': isMobile }">
-    <!-- 顶部信息栏（紧凑） -->
     <div class="session-header-bar">
       <div class="header-left">
         <el-button :icon="ArrowLeft" @click="$router.push('/')" text size="small" />
@@ -37,7 +36,6 @@
       </div>
     </div>
 
-    <!-- 会话元信息（可折叠） -->
     <div v-if="summary" class="session-meta" :class="{ 'is-collapsed': metaCollapsed }" @click="metaCollapsed = !metaCollapsed">
       <div class="meta-row">
         <span class="meta-cwd">{{ summary.cwd }}</span>
@@ -51,7 +49,6 @@
       <div v-if="!metaCollapsed && summary.preview" class="meta-preview">{{ truncateText(summary.preview, 200) }}</div>
     </div>
 
-    <!-- 未接管提示 -->
     <div v-if="summary && !summary.loaded && !summary.ended" class="resume-banner">
       <span>会话未接管，接管后可继续执行</span>
       <el-button type="primary" size="small" :loading="resuming" @click="handleResume">接管</el-button>
@@ -66,7 +63,6 @@
     </div>
 
     <div class="content-area">
-      <!-- 审批区域 -->
       <div v-if="sessionApprovals.length > 0" class="approval-section">
         <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
           <div class="approval-info">
@@ -87,15 +83,17 @@
         </div>
       </div>
 
-      <!-- 对话记录（中间滚动区域） -->
       <div class="chat-shell">
         <div class="chat-toolbar">
-          <el-tag size="small" type="info" round>{{ detail?.totalTurns ?? orderedTurns.length }} 轮对话</el-tag>
-          <div style="display: flex; gap: 4px">
-            <el-button size="small" text @click="expandAll">展开</el-button>
-            <el-button size="small" text @click="collapseAll">折叠</el-button>
+          <div class="toolbar-left">
+            <el-tag size="small" type="info" round>{{ detail?.totalTurns ?? orderedTurns.length }} 轮对话</el-tag>
+            <span v-if="!followLiveOutput && latestTurn" class="follow-tip">已停留在历史位置</span>
+          </div>
+          <div class="toolbar-right">
+            <el-button v-if="!followLiveOutput && latestTurn" size="small" text @click="jumpToLatest">回到最新</el-button>
           </div>
         </div>
+
         <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
           <div v-if="detail?.hasMoreHistory" class="history-load-row">
             <el-button text size="small" :loading="loadingHistory" @click="loadOlderTurns">加载更早对话</el-button>
@@ -106,7 +104,61 @@
           </div>
 
           <template v-if="orderedTurns.length > 0">
-            <TurnCard v-for="(turn, i) in orderedTurns" :key="turn.id" :turn="turn" :index="i" :ref="(el: any) => setTurnRef(turn.id, el)" />
+            <section v-for="turn in orderedTurns" :key="turn.id" class="turn-stream">
+              <div class="turn-anchor">
+                <span class="turn-title">Turn #{{ turnNumber(turn.id) }}</span>
+                <span class="turn-meta">{{ turn.status === 'inProgress' ? '执行中' : formatTimestamp(turn.startedAt) }}</span>
+              </div>
+
+              <div
+                v-for="(item, idx) in turn.items"
+                :key="item.id || `${turn.id}-${idx}`"
+                class="message-row"
+                :class="messageSide(item.type)"
+              >
+                <div class="message-bubble" :class="bubbleClass(item.type)">
+                  <div class="message-topline">
+                    <span class="message-label">{{ itemLabel(item.type) }}</span>
+                    <span v-if="item.status" class="message-status">{{ item.status }}</span>
+                  </div>
+
+                  <div v-if="item.title && item.type !== 'userMessage' && item.type !== 'agentMessage'" class="message-title">
+                    {{ item.title }}
+                  </div>
+
+                  <div v-if="item.body" class="message-body" :class="{ 'is-code': isCodeType(item.type) }">
+                    <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
+                    <div v-else class="markdown-body">
+                      <VueMarkdown :source="item.body" :options="markdownOptions" />
+                      <span v-if="isStreamingItem(turn, item)" class="typing-cursor">|</span>
+                    </div>
+                  </div>
+
+                  <details v-if="item.auxiliary" class="message-aux">
+                    <summary>详细输出</summary>
+                    <pre>{{ item.auxiliary }}</pre>
+                  </details>
+                </div>
+              </div>
+
+              <div v-if="turn.diff" class="message-row side-left">
+                <div class="message-bubble bubble-tool">
+                  <div class="message-topline">
+                    <span class="message-label">文件变更</span>
+                  </div>
+                  <pre class="diff-block">{{ turn.diff }}</pre>
+                </div>
+              </div>
+
+              <div v-if="turn.error" class="message-row side-left">
+                <div class="message-bubble bubble-error">
+                  <div class="message-topline">
+                    <span class="message-label">错误</span>
+                  </div>
+                  <div class="message-body">{{ turn.error }}</div>
+                </div>
+              </div>
+            </section>
           </template>
 
           <div v-else-if="!app.loading && !detail" class="empty-hint">
@@ -117,7 +169,6 @@
       </div>
     </div>
 
-    <!-- 底部输入区域（固定） -->
     <div v-if="summary && summary.loaded && !summary.ended" class="input-area">
       <div v-if="isStreamingReply" class="streaming-hint">
         <span class="live-dot"></span>
@@ -147,14 +198,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAppStore, type ApprovalRequest, type SessionSummary } from '../stores/app'
+import { useAppStore, type ApprovalRequest, type SessionSummary, type Turn, type TurnItem } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton, Loading } from '@element-plus/icons-vue'
+import VueMarkdown from 'vue-markdown-render'
 import {
   formatTimestamp, statusTagType, statusLabel, lifecycleLabel,
   lifecycleTagType, truncateText, sessionDisplayName,
 } from '../utils/helpers'
-import TurnCard from '../components/TurnCard.vue'
 
 const route = useRoute()
 const app = useAppStore()
@@ -168,6 +219,13 @@ const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
 
+const markdownOptions = {
+  html: false,
+  breaks: true,
+  linkify: true,
+  typographer: true,
+}
+
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
 window.addEventListener('resize', onResize)
@@ -179,44 +237,85 @@ const summary = computed<SessionSummary | undefined>(() => {
 })
 
 const sessionApprovals = computed(() => app.filteredApprovals.filter((a) => a.threadId === sessionId))
-
-const orderedTurns = computed(() => {
-  if (!detail.value) return []
-  return [...detail.value.turns].reverse()
+const orderedTurns = computed(() => detail.value?.turns || [])
+const latestTurn = computed(() => orderedTurns.value[orderedTurns.value.length - 1])
+const runningTurn = computed(() => {
+  for (let i = orderedTurns.value.length - 1; i >= 0; i -= 1) {
+    const turn = orderedTurns.value[i]
+    if (turn.status === 'inProgress') return turn
+  }
+  return undefined
 })
-const runningTurn = computed(() => orderedTurns.value.find((turn) => turn.status === 'inProgress'))
 const isStreamingReply = computed(() => {
   const turn = runningTurn.value
   if (!turn) return false
-  return turn.items?.some((item) => item.type === 'agentMessage' && item.body)
+  return turn.items?.some((item: TurnItem) => item.type === 'agentMessage' && item.body)
 })
-
-const turnRefs = ref<Record<string, any>>({})
-
-function setTurnRef(id: string, el: any) {
-  if (el) turnRefs.value[id] = el
-}
-
-function expandAll() {
-  Object.values(turnRefs.value).forEach((comp: any) => {
-    if (comp?.expanded !== undefined) comp.expanded = true
-  })
-}
-
-function collapseAll() {
-  Object.values(turnRefs.value).forEach((comp: any) => {
-    if (comp?.expanded !== undefined) comp.expanded = false
-  })
-}
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
-function scrollChatToBottom() {
+function itemLabel(type: string): string {
+  switch (type) {
+    case 'userMessage': return '用户'
+    case 'agentMessage': return 'Codex'
+    case 'commandExecution': return '命令执行'
+    case 'fileChange': return '文件变更'
+    case 'reasoning': return '思考'
+    case 'plan': return '计划'
+    case 'mcpToolCall': return 'MCP 工具'
+    case 'dynamicToolCall': return '工具'
+    case 'collabAgentToolCall': return '协作'
+    default: return type
+  }
+}
+
+function messageSide(type: string) {
+  return type === 'userMessage' ? 'side-right' : 'side-left'
+}
+
+function bubbleClass(type: string) {
+  switch (type) {
+    case 'userMessage': return 'bubble-user'
+    case 'agentMessage': return 'bubble-agent'
+    case 'commandExecution':
+    case 'dynamicToolCall':
+    case 'mcpToolCall':
+    case 'collabAgentToolCall':
+    case 'fileChange':
+      return 'bubble-tool'
+    case 'reasoning':
+    case 'plan':
+      return 'bubble-meta'
+    default:
+      return 'bubble-other'
+  }
+}
+
+function isCodeType(type: string): boolean {
+  return ['commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall'].includes(type)
+}
+
+function isStreamingItem(turn: Turn, item: TurnItem): boolean {
+  return turn.status === 'inProgress' && item.type === 'agentMessage'
+}
+
+function turnNumber(id: string) {
+  const idx = orderedTurns.value.findIndex((turn) => turn.id === id)
+  return idx >= 0 ? idx + 1 : '?'
+}
+
+function scrollChatToBottom(force = false) {
   nextTick(() => {
-    if (chatAreaRef.value) {
-      chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
-    }
+    const el = chatAreaRef.value
+    if (!el) return
+    if (!force && !followLiveOutput.value) return
+    el.scrollTop = el.scrollHeight
   })
+}
+
+function jumpToLatest() {
+  followLiveOutput.value = true
+  scrollChatToBottom(true)
 }
 
 function onChatScroll() {
@@ -225,9 +324,13 @@ function onChatScroll() {
   followLiveOutput.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
 }
 
-// Follow live Codex output while the user stays near the latest message.
-watch(orderedTurns, () => {
-  if (followLiveOutput.value || runningTurn.value) scrollChatToBottom()
+watch(orderedTurns, (next, prev) => {
+  const prevLast = prev?.[prev.length - 1]
+  const nextLast = next?.[next.length - 1]
+  const latestChanged = !prevLast || !nextLast || prevLast.id !== nextLast.id || JSON.stringify(prevLast.items) !== JSON.stringify(nextLast.items)
+  if (latestChanged && followLiveOutput.value) {
+    scrollChatToBottom(true)
+  }
 }, { deep: true })
 
 async function refreshPage() {
@@ -238,6 +341,9 @@ async function refreshPage() {
 async function loadOlderTurns() {
   if (!detail.value?.hasMoreHistory || loadingHistory.value) return
   loadingHistory.value = true
+  const el = chatAreaRef.value
+  const beforeHeight = el?.scrollHeight || 0
+  const beforeTop = el?.scrollTop || 0
   try {
     const nextOffset = Math.max((detail.value.offset || 0) - (detail.value.limit || 8), 0)
     await app.loadSession(sessionId, {
@@ -245,6 +351,11 @@ async function loadOlderTurns() {
       limit: detail.value.limit || 8,
       appendHistory: true,
     })
+    await nextTick()
+    if (el) {
+      const delta = el.scrollHeight - beforeHeight
+      el.scrollTop = beforeTop + delta
+    }
   } finally {
     loadingHistory.value = false
   }
@@ -279,6 +390,7 @@ async function handleSubmit() {
       await app.startTurn(sessionId, promptText.value)
     }
     promptText.value = ''
+    followLiveOutput.value = true
     ElMessage.success('指令已发送')
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || '发送失败')
@@ -387,7 +499,7 @@ async function handleApprovalChoice(approval: ApprovalRequest, decision: string)
 onMounted(async () => {
   await refreshPage()
   app.registerActiveSession(sessionId)
-  scrollChatToBottom()
+  scrollChatToBottom(true)
 })
 
 watch(summary, (next) => {
@@ -410,13 +522,18 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  max-width: none;
   margin: 0;
   overflow: hidden;
   min-height: 0;
 }
 
-/* ---- 顶部信息栏 ---- */
+.session-header-bar,
+.session-meta,
+.resume-banner,
+.input-area {
+  flex-shrink: 0;
+}
+
 .session-header-bar {
   display: flex;
   align-items: center;
@@ -424,7 +541,6 @@ onUnmounted(() => {
   padding: 10px 16px;
   background: var(--cf-card);
   border-bottom: 1px solid var(--cf-border-light);
-  flex-shrink: 0;
   gap: 8px;
 }
 
@@ -436,6 +552,12 @@ onUnmounted(() => {
   flex: 1;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .session-name {
   font-size: 15px;
   font-weight: 700;
@@ -445,25 +567,21 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.live-indicator {
+.live-indicator,
+.streaming-hint {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
   color: var(--cf-warning);
+}
+
+.live-indicator {
   padding: 2px 8px;
   border-radius: 10px;
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
-  flex-shrink: 0;
 }
 
 .live-dot {
@@ -479,18 +597,11 @@ onUnmounted(() => {
   50% { opacity: 0.4; transform: scale(0.8); }
 }
 
-/* ---- 元信息 ---- */
 .session-meta {
   padding: 8px 16px;
   background: var(--cf-card);
   border-bottom: 1px solid var(--cf-border-light);
   cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s ease;
-}
-
-.session-meta:hover {
-  background: #f8fafd;
 }
 
 .meta-row {
@@ -507,7 +618,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 400px;
+  max-width: 420px;
 }
 
 .meta-tags {
@@ -534,11 +645,6 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.session-meta.is-collapsed .meta-preview {
-  display: none;
-}
-
-/* ---- 接管提示 ---- */
 .resume-banner {
   display: flex;
   align-items: center;
@@ -548,27 +654,21 @@ onUnmounted(() => {
   border-bottom: 1px solid #fde68a;
   font-size: 13px;
   color: #92400e;
-  flex-shrink: 0;
-}
-
-/* ---- 审批 ---- */
-.approval-section {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  background: #fffbeb;
-  border-bottom: 1px solid #fde68a;
 }
 
 .content-area {
   flex: 1;
-  width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 14px 18px 0;
   background: linear-gradient(180deg, #eef5fd 0%, #e7f0fb 100%);
-  border-radius: 18px 18px 0 0;
+}
+
+.approval-section {
+  flex-shrink: 0;
+  padding: 0 0 10px;
 }
 
 .approval-card {
@@ -577,14 +677,10 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 8px 12px;
   background: var(--cf-card);
-  border-radius: var(--cf-radius-sm);
+  border-radius: 10px;
   border-left: 3px solid var(--cf-warning);
   margin-bottom: 6px;
   gap: 8px;
-}
-
-.approval-card:last-child {
-  margin-bottom: 0;
 }
 
 .approval-info {
@@ -611,74 +707,269 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* ---- 聊天区域 ---- */
 .chat-shell {
   flex: 1;
-  width: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid #d9e6f7;
-  border-radius: 18px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 24px rgba(24, 62, 122, 0.06);
+  background: rgba(248, 251, 255, 0.92);
+  border: 1px solid #dce8f8;
+  border-radius: 20px 20px 0 0;
+  overflow: hidden;
 }
 
 .chat-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-shrink: 0;
-  padding: 12px 16px 8px;
+  padding: 12px 16px 10px;
   border-bottom: 1px solid rgba(220, 230, 246, 0.9);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 250, 255, 0.9) 100%);
-  border-radius: 18px 18px 0 0;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.follow-tip {
+  font-size: 12px;
+  color: var(--cf-text-secondary);
 }
 
 .chat-area {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
-  padding: 12px 16px 16px;
+  padding: 14px 18px 18px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 0;
+  gap: 14px;
+}
+
+.history-load-row,
+.empty-hint {
+  display: flex;
+  justify-content: center;
 }
 
 .empty-hint {
-  display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
   padding: 40px 0;
   color: var(--cf-text-secondary);
   font-size: 14px;
 }
 
-.history-load-row {
+.turn-stream {
   display: flex;
-  justify-content: center;
-  padding: 4px 0 10px;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* ---- 底部输入 ---- */
+.turn-anchor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--cf-text-lighter);
+}
+
+.turn-title {
+  font-weight: 600;
+  color: var(--cf-text-secondary);
+}
+
+.message-row {
+  display: flex;
+  width: 100%;
+}
+
+.message-row.side-left {
+  justify-content: flex-start;
+}
+
+.message-row.side-right {
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  width: min(100%, 860px);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 24px rgba(15, 46, 106, 0.04);
+  border: 1px solid transparent;
+}
+
+.bubble-user {
+  max-width: min(78%, 760px);
+  background: #2f6fec;
+  color: #fff;
+  border-color: #2f6fec;
+}
+
+.bubble-user :deep(*) {
+  color: #fff;
+}
+
+.bubble-agent {
+  background: #ffffff;
+  border-color: #d8e6fb;
+}
+
+.bubble-tool {
+  background: #f8fbff;
+  border-color: #d9e6f7;
+}
+
+.bubble-meta {
+  background: #f7fafc;
+  border-color: #e5ebf5;
+}
+
+.bubble-other {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+.bubble-error {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.message-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.message-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message-status {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.message-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.message-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--cf-text-secondary);
+}
+
+.bubble-user .message-body {
+  color: #fff;
+}
+
+.message-body.is-code pre,
+.diff-block,
+.message-aux pre {
+  margin: 0;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.message-body.is-code pre,
+.diff-block {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.message-aux {
+  margin-top: 10px;
+}
+
+.message-aux summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  margin-bottom: 8px;
+}
+
+.message-aux pre {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--cf-text-secondary);
+}
+
+.markdown-body :deep(*) {
+  word-break: break-word;
+}
+
+.markdown-body :deep(p),
+.markdown-body :deep(ul),
+.markdown-body :deep(ol),
+.markdown-body :deep(blockquote),
+.markdown-body :deep(pre),
+.markdown-body :deep(table) {
+  margin: 0 0 10px;
+}
+
+.markdown-body :deep(p:last-child),
+.markdown-body :deep(ul:last-child),
+.markdown-body :deep(ol:last-child),
+.markdown-body :deep(blockquote:last-child),
+.markdown-body :deep(pre:last-child),
+.markdown-body :deep(table:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 20px;
+}
+
+.markdown-body :deep(code) {
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.markdown-body :deep(pre) {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.typing-cursor {
+  display: inline;
+  color: var(--cf-primary);
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 .input-area {
-  flex-shrink: 0;
   padding: 10px 16px;
   background: var(--cf-card);
   border-top: 1px solid var(--cf-border-light);
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.streaming-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  color: var(--cf-warning);
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .input-row {
@@ -700,25 +991,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* ---- 手机适配 ---- */
-.session-detail-page.is-mobile .session-header-bar {
-  padding: 8px 12px;
-}
-
-.session-detail-page.is-mobile .session-name {
-  font-size: 14px;
-  max-width: 160px;
-}
-
-.session-detail-page.is-mobile .meta-cwd {
-  max-width: 200px;
-  font-size: 11px;
-}
-
-.session-detail-page.is-mobile .chat-area {
-  padding: 8px 10px;
-}
-
 .session-detail-page.is-mobile {
   height: auto;
   min-height: 100%;
@@ -726,28 +998,24 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .content-area {
-  flex: initial;
   overflow: visible;
   min-height: auto;
   padding: 10px 0 0;
   background: transparent;
-  border-radius: 0;
 }
 
 .session-detail-page.is-mobile .chat-shell {
-  min-height: auto;
-  overflow: visible;
   border-radius: 14px;
 }
 
-.session-detail-page.is-mobile .chat-toolbar {
-  padding: 10px 12px 8px;
+.session-detail-page.is-mobile .chat-area {
+  padding: 10px 12px 14px;
 }
 
-.session-detail-page.is-mobile .chat-area {
-  flex: initial;
-  overflow: visible;
-  min-height: auto;
+.session-detail-page.is-mobile .message-bubble,
+.session-detail-page.is-mobile .bubble-user {
+  max-width: 100%;
+  width: 100%;
 }
 
 .session-detail-page.is-mobile .input-area {
@@ -759,11 +1027,7 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .input-row :deep(.el-textarea__inner) {
-  font-size: 16px; /* prevent iOS zoom */
-}
-
-.session-detail-page.is-mobile .send-btn {
-  height: 34px;
+  font-size: 16px;
 }
 
 .session-detail-page.is-mobile .approval-card {
