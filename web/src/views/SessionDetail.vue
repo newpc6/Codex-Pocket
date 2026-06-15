@@ -1,65 +1,106 @@
 <template>
   <div class="session-detail-page" :class="{ 'is-mobile': isMobile }">
-    <div class="session-header-bar">
-      <div class="header-left">
-        <el-button :icon="ArrowLeft" @click="$router.push('/')" text size="small" />
-        <span class="session-name">{{ summary ? displayName(summary) : '会话详情' }}</span>
-        <el-tag v-if="summary" :type="statusTagType(summary.status, summary.ended)" size="small">
-          {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
-        </el-tag>
-        <div v-if="summary && summary.lastTurnStatus === 'inProgress'" class="live-indicator">
-          <span class="live-dot"></span>
-          <span>执行中</span>
+    <div v-if="summary" class="session-hero">
+      <div class="hero-top">
+        <button type="button" class="back-chip" @click="$router.push('/')">
+          <el-icon><ArrowLeft /></el-icon>
+          <span>返回会话</span>
+        </button>
+
+        <div class="hero-actions">
+          <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle size="small" />
+          <el-dropdown trigger="click" @command="onAction">
+            <el-button size="small"><el-icon><More /></el-icon></el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="!summary.loaded && !summary.ended" command="resume">
+                  <el-icon><Connection /></el-icon> 接管会话
+                </el-dropdown-item>
+                <el-dropdown-item v-if="summary.ended" command="resume">
+                  <el-icon><Connection /></el-icon> 重新接管
+                </el-dropdown-item>
+                <el-dropdown-item v-if="summary.loaded && !summary.ended" command="detach">
+                  <el-icon><SwitchButton /></el-icon> 取消接管
+                </el-dropdown-item>
+                <el-dropdown-item v-if="summary.loaded && !summary.ended" command="end">
+                  <el-icon><SwitchButton /></el-icon> 结束会话
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
-      <div class="header-right">
-        <el-button :icon="Refresh" :loading="app.loading" @click="refreshPage()" circle size="small" />
-        <el-dropdown v-if="summary" trigger="click" @command="onAction">
-          <el-button size="small"><el-icon><More /></el-icon></el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="!summary.loaded && !summary.ended" command="resume">
-                <el-icon><Connection /></el-icon> 接管会话
-              </el-dropdown-item>
-              <el-dropdown-item v-if="summary.ended" command="resume">
-                <el-icon><Connection /></el-icon> 重新接管
-              </el-dropdown-item>
-              <el-dropdown-item v-if="summary.loaded && !summary.ended" command="detach">
-                <el-icon><SwitchButton /></el-icon> 取消接管
-              </el-dropdown-item>
-              <el-dropdown-item v-if="summary.loaded && !summary.ended" command="end">
-                <el-icon><SwitchButton /></el-icon> 结束会话
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-    </div>
 
-    <div v-if="summary" class="session-meta" :class="{ 'is-collapsed': metaCollapsed }" @click="metaCollapsed = !metaCollapsed">
-      <div class="meta-row">
-        <span class="meta-cwd">{{ summary.cwd }}</span>
-        <div class="meta-tags">
-          <el-tag size="small" :type="summary.loaded ? 'success' : ''">{{ summary.loaded ? '已接管' : '未接管' }}</el-tag>
-          <el-tag v-if="summary.branch" size="small">{{ summary.branch }}</el-tag>
-          <el-tag size="small" :type="lifecycleTagType(summary.lifecycleStage)">{{ lifecycleLabel(summary.lifecycleStage) }}</el-tag>
+      <div class="hero-main">
+        <div class="hero-title-group">
+          <div class="hero-name-row">
+            <h1 class="hero-name">{{ displayName(summary) }}</h1>
+            <el-tag :type="statusTagType(summary.status, summary.ended)" size="small" effect="light">
+              {{ statusLabel(summary.status, summary.ended, summary.activeFlags?.length > 0) }}
+            </el-tag>
+            <div v-if="summary.lastTurnStatus === 'inProgress'" class="live-indicator">
+              <span class="live-dot"></span>
+              <span>执行中</span>
+            </div>
+          </div>
+
+          <div class="hero-meta-row">
+            <span class="hero-cwd">{{ summary.cwd }}</span>
+            <div class="hero-tags">
+              <span class="hero-pill" :class="{ 'is-active': summary.loaded }">{{ summary.loaded ? '已接管' : '未接管' }}</span>
+              <span v-if="summary.branch" class="hero-pill">{{ summary.branch }}</span>
+              <span class="hero-pill">{{ lifecycleLabel(summary.lifecycleStage) }}</span>
+            </div>
+          </div>
+
+          <p v-if="summary.preview" class="hero-preview">
+            {{ metaCollapsed ? truncateText(summary.preview, 120) : truncateText(summary.preview, 220) }}
+          </p>
+
+          <button v-if="summary.preview" type="button" class="hero-toggle" @click="metaCollapsed = !metaCollapsed">
+            {{ metaCollapsed ? '展开说明' : '收起说明' }}
+          </button>
         </div>
-        <el-icon class="meta-arrow" :class="{ 'is-up': !metaCollapsed }"><ArrowRight /></el-icon>
-      </div>
-      <div v-if="!metaCollapsed && summary.preview" class="meta-preview">{{ truncateText(summary.preview, 200) }}</div>
-    </div>
 
-    <div v-if="summary && !summary.loaded && !summary.ended" class="resume-banner">
-      <span>会话未接管，接管后可继续执行</span>
-      <el-button type="primary" size="small" :loading="resuming" @click="handleResume">接管</el-button>
-    </div>
-    <div v-if="summary && summary.loaded && !summary.ended" class="resume-banner">
-      <span>当前会话正在由 CodexFlow 托管。取消接管后，会话会回到已发现状态。</span>
-      <el-button size="small" :loading="detaching" @click="handleDetach">取消接管</el-button>
-    </div>
-    <div v-if="summary && summary.ended" class="resume-banner">
-      <span>会话已结束，可重新接管继续</span>
-      <el-button type="primary" size="small" :loading="resuming" @click="handleResume">重新接管</el-button>
+        <div class="hero-status-card">
+          <div class="hero-status-label">当前状态</div>
+          <div class="hero-status-value">
+            {{ summary.ended ? '会话已结束' : summary.loaded ? 'CodexFlow 正在托管' : '会话未接管' }}
+          </div>
+          <div class="hero-status-desc">
+            {{ statusDescription(summary) }}
+          </div>
+
+          <div class="hero-primary-actions">
+            <el-button
+              v-if="!summary.loaded && !summary.ended"
+              type="primary"
+              size="default"
+              :loading="resuming"
+              @click="handleResume"
+            >
+              接管会话
+            </el-button>
+            <el-button
+              v-else-if="summary.ended"
+              type="primary"
+              size="default"
+              :loading="resuming"
+              @click="handleResume"
+            >
+              重新接管
+            </el-button>
+            <el-button
+              v-else
+              size="default"
+              :loading="detaching"
+              @click="handleDetach"
+            >
+              取消接管
+            </el-button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="content-area">
@@ -265,6 +306,12 @@ const isStreamingReply = computed(() => {
 })
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
+
+function statusDescription(s: SessionSummary) {
+  if (s.ended) return '当前会话已经结束，但历史内容仍然保留，可以重新接管继续工作。'
+  if (s.loaded) return '当前会话由 CodexFlow 持续同步和控制，你可以在这里继续发送指令或中断执行。'
+  return '当前会话还没有由 CodexFlow 托管，接管后可以继续执行并实时查看消息。'
+}
 
 function itemLabel(type: string): string {
   switch (type) {
@@ -550,44 +597,188 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.session-header-bar,
-.session-meta,
-.resume-banner,
 .input-area {
   flex-shrink: 0;
 }
 
-.session-header-bar {
+.session-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  margin: 0 18px 14px;
+  border: 1px solid var(--cf-border);
+  border-radius: 18px;
+  background:
+    linear-gradient(140deg, rgba(51, 136, 255, 0.1) 0%, rgba(51, 136, 255, 0.02) 46%, rgba(255, 255, 255, 0.96) 100%),
+    #fff;
+  box-shadow: var(--cf-shadow-sm);
+}
+
+.hero-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: var(--cf-card);
-  border-bottom: 1px solid var(--cf-border-light);
-  gap: 8px;
+  gap: 12px;
 }
 
-.header-left {
+.back-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(205, 223, 255, 0.8);
+}
+
+.back-chip:hover {
+  color: var(--cf-primary-dark);
+  box-shadow: inset 0 0 0 1px rgba(121, 168, 255, 0.95);
+}
+
+.hero-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.hero-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.hero-title-group {
   min-width: 0;
-  flex: 1;
 }
 
-.header-right {
+.hero-name-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
-.session-name {
-  font-size: 15px;
+.hero-name {
+  font-size: 28px;
+  line-height: 1.1;
   font-weight: 700;
   color: var(--cf-text-heavy);
+}
+
+.hero-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-cwd {
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+}
+
+.hero-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(51, 136, 255, 0.08);
+  color: var(--cf-primary-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hero-pill.is-active {
+  background: rgba(19, 168, 107, 0.12);
+  color: var(--cf-success);
+}
+
+.hero-preview {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--cf-text-secondary);
+  max-width: 760px;
+}
+
+.hero-toggle {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--cf-primary-dark);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hero-status-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  box-shadow: 0 12px 24px rgba(15, 46, 106, 0.05);
+}
+
+.hero-status-label {
+  font-size: 12px;
+  color: var(--cf-text-lighter);
+  font-weight: 600;
+}
+
+.hero-status-value {
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--cf-text-heavy);
+}
+
+.hero-status-desc {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--cf-text-secondary);
+}
+
+.hero-primary-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: auto;
+}
+
+.hero-primary-actions :deep(.el-button) {
+  min-width: 120px;
+  border-radius: 12px;
+}
+
+.hero-actions :deep(.el-button) {
+  border-radius: 12px;
 }
 
 .live-indicator,
@@ -685,7 +876,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 14px 18px 0;
+  padding: 0 18px 0;
   background: linear-gradient(180deg, #eef5fd 0%, #e7f0fb 100%);
 }
 
@@ -1052,10 +1243,30 @@ onUnmounted(() => {
   overflow: visible;
 }
 
+.session-detail-page.is-mobile .session-hero {
+  margin: 0 10px 12px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.session-detail-page.is-mobile .hero-top,
+.session-detail-page.is-mobile .hero-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.session-detail-page.is-mobile .hero-name {
+  font-size: 22px;
+}
+
+.session-detail-page.is-mobile .hero-status-card {
+  width: 100%;
+}
+
 .session-detail-page.is-mobile .content-area {
   overflow: visible;
   min-height: auto;
-  padding: 10px 0 0;
+  padding: 0 0 0;
   background: transparent;
 }
 
