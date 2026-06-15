@@ -260,6 +260,41 @@ export const useAppStore = defineStore('app', () => {
     return turn
   }
 
+  function inputItemsToTurnItems(input: Array<Record<string, string>>): TurnItem[] {
+    const textParts = input
+      .filter((entry) => entry.type === 'text' && entry.text?.trim())
+      .map((entry) => entry.text.trim())
+    const imageParts = input
+      .filter((entry) => entry.type === 'image' && entry.uploadId?.trim())
+      .map((entry) => `[Attached image: upload:${entry.uploadId.trim()}]`)
+    const body = [...textParts, ...imageParts].join('\n\n')
+    if (!body) return []
+    return [{
+      id: `local-user-${Date.now()}`,
+      type: 'userMessage',
+      title: 'User Prompt',
+      body,
+      status: '',
+      auxiliary: '',
+    }]
+  }
+
+  function appendLocalUserInput(threadId: string, turnId: string, input: Array<Record<string, string>>) {
+    const detail = sessionDetails.value[threadId]
+    if (!detail) return
+    const turn = ensureSessionTurn(detail, turnId)
+    turn.status = 'inProgress'
+    detail.summary.lastTurnId = turnId
+    detail.summary.lastTurnStatus = 'inProgress'
+    detail.summary.loaded = true
+    const newItems = inputItemsToTurnItems(input)
+    if (newItems.length === 0) return
+    const hasUserMessage = turn.items.some((item) => item.type === 'userMessage' && item.body === newItems[0].body)
+    if (!hasUserMessage) {
+      turn.items.push(...newItems)
+    }
+  }
+
   function applyAgentMessageDelta(threadId: string, params: Record<string, any>) {
     const detail = sessionDetails.value[threadId]
     if (!detail) return
@@ -368,7 +403,10 @@ export const useAppStore = defineStore('app', () => {
     const inputs: Array<Record<string, string>> = []
     if (prompt.trim()) inputs.push({ type: 'text', text: prompt.trim() })
     for (const uid of imageUploadIds) inputs.push({ type: 'image', uploadId: uid })
-    await api.post(`/sessions/${sessionId}/turns/start`, { prompt, inputs })
+    const res = await api.post<Turn>(`/sessions/${sessionId}/turns/start`, { prompt, inputs })
+    if (res.data?.id) {
+      appendLocalUserInput(sessionId, res.data.id, inputs)
+    }
     await refreshDashboard()
     await loadSession(sessionId)
   }
@@ -378,6 +416,7 @@ export const useAppStore = defineStore('app', () => {
     if (prompt.trim()) inputs.push({ type: 'text', text: prompt.trim() })
     for (const uid of imageUploadIds) inputs.push({ type: 'image', uploadId: uid })
     await api.post(`/sessions/${sessionId}/turns/steer`, { turnId, prompt, inputs })
+    appendLocalUserInput(sessionId, turnId, inputs)
     await refreshDashboard()
     await loadSession(sessionId)
   }
@@ -428,7 +467,7 @@ export const useAppStore = defineStore('app', () => {
       const threadId = parseNotificationThreadId(event)
       if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         const params = parseNotificationParams(event)
-        if (method === 'agentMessage/delta') {
+        if (method === 'agentMessage/delta' || method === 'item/agentMessage/delta') {
           applyAgentMessageDelta(threadId, params)
         } else {
           scheduleSessionLoad(threadId, 80)

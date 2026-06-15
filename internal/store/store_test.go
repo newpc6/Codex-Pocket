@@ -130,6 +130,37 @@ func TestRecordMessageDeltaCreatesStreamingAgentItem(t *testing.T) {
 	}
 }
 
+func TestMarkTurnInterruptedUpdatesLocalState(t *testing.T) {
+	sessionStore, err := New(nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID:     "thread-1",
+		Status: codex.ThreadStatus{Type: "active"},
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "inProgress"},
+		},
+	})
+
+	sessionStore.MarkTurnInterrupted("thread-1", "turn-1", "stopped")
+
+	record, ok := sessionStore.SnapshotSession("thread-1")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing thread")
+	}
+	if got := record.Thread.Status.Type; got != "idle" {
+		t.Fatalf("thread status = %q, want idle", got)
+	}
+	if got := record.Thread.Turns[0].Status; got != "interrupted" {
+		t.Fatalf("turn status = %q, want interrupted", got)
+	}
+	if record.Thread.Turns[0].Error == nil || record.Thread.Turns[0].Error.Message != "stopped" {
+		t.Fatalf("turn error = %#v, want stopped", record.Thread.Turns[0].Error)
+	}
+}
+
 func stringPtrForTest(value string) *string {
 	return &value
 }

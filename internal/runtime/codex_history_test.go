@@ -66,3 +66,21 @@ func TestExtractShellCommand(t *testing.T) {
 		t.Fatalf("extractShellCommand() = %q, want %q", got, want)
 	}
 }
+
+func TestAppendStructuredUserInputAddsSteerMessage(t *testing.T) {
+	turn := codex.Turn{
+		ID: "turn-1",
+		Items: []map[string]any{
+			composeUserMessageItemFromInput([]map[string]any{textInput("first")}),
+		},
+	}
+
+	turn = appendStructuredUserInput(turn, []map[string]any{textInput("second")})
+
+	if len(turn.Items) != 2 {
+		t.Fatalf("items len = %d, want 2", len(turn.Items))
+	}
+	if got := codex.FirstUserText([]map[string]any{turn.Items[1]}); got != "second" {
+		t.Fatalf("second user message = %q, want second", got)
+	}
+}

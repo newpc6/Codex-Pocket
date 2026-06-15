@@ -294,9 +294,9 @@
         />
         <el-button type="primary" :loading="submitting" @click="handleSubmit"
           :disabled="!promptText.trim()" class="send-btn">
-          {{ summary.lastTurnStatus === 'inProgress' ? 'Steer' : '发送' }}
+          {{ runningTurn ? 'Steer' : '发送' }}
         </el-button>
-        <el-button v-if="summary.lastTurnStatus === 'inProgress'" type="warning" size="small" @click="handleInterrupt">
+        <el-button v-if="runningTurn" type="warning" size="small" @click="handleInterrupt">
           中断
         </el-button>
       </div>
@@ -603,9 +603,9 @@ async function handleSubmit() {
   if (!promptText.value.trim()) return
   submitting.value = true
   try {
-    const s = summary.value
-    if (s?.lastTurnStatus === 'inProgress' && s.lastTurnId) {
-      await app.steerTurn(sessionId, s.lastTurnId, promptText.value)
+    const activeTurn = runningTurn.value
+    if (activeTurn?.id) {
+      await app.steerTurn(sessionId, activeTurn.id, promptText.value)
     } else {
       await app.startTurn(sessionId, promptText.value)
     }
@@ -632,10 +632,10 @@ async function handleDetach() {
 }
 
 async function handleInterrupt() {
-  const s = summary.value
-  if (!s?.lastTurnId) return
+  const turnId = runningTurn.value?.id || summary.value?.lastTurnId
+  if (!turnId) return
   try {
-    await app.interruptTurn(sessionId, s.lastTurnId)
+    await app.interruptTurn(sessionId, turnId)
     ElMessage.success('已中断')
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || '中断失败')

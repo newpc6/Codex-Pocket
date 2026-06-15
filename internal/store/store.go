@@ -318,7 +318,7 @@ func (s *Store) ensureSessionLocked(threadID string) *SessionRecord {
 	}
 
 	record = &SessionRecord{
-		Thread: codex.Thread{ID: threadID},
+		Thread:  codex.Thread{ID: threadID},
 		Managed: s.managedState[threadID],
 		Runtime: SessionRuntime{
 			LatestDiffByTurn:    make(map[string]string),
@@ -397,6 +397,27 @@ func (s *Store) RecordMessageDelta(threadID, turnID, itemID, delta string) {
 			"type": "agentMessage",
 			"text": record.Runtime.MessageDeltasByItem[itemID],
 		})
+		return
+	}
+}
+
+func (s *Store) MarkTurnInterrupted(threadID, turnID, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.sessions[threadID]
+	if !ok {
+		return
+	}
+	record.Thread.Status = codex.ThreadStatus{Type: "idle"}
+	for i := range record.Thread.Turns {
+		if record.Thread.Turns[i].ID != turnID {
+			continue
+		}
+		record.Thread.Turns[i].Status = "interrupted"
+		if strings.TrimSpace(message) != "" {
+			record.Thread.Turns[i].Error = &codex.TurnError{Message: strings.TrimSpace(message)}
+		}
 		return
 	}
 }

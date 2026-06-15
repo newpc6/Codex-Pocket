@@ -33,10 +33,10 @@ type codexTaskStartedPayload struct {
 }
 
 type codexTaskEndedPayload struct {
-	TurnID       string `json:"turn_id"`
-	CompletedAt  int64  `json:"completed_at"`
-	DurationMs   int64  `json:"duration_ms"`
-	LastMessage  string `json:"last_agent_message"`
+	TurnID      string `json:"turn_id"`
+	CompletedAt int64  `json:"completed_at"`
+	DurationMs  int64  `json:"duration_ms"`
+	LastMessage string `json:"last_agent_message"`
 }
 
 type codexTurnAbortedPayload struct {
@@ -47,19 +47,19 @@ type codexTurnAbortedPayload struct {
 }
 
 type codexEventMessagePayload struct {
-	Type        string         `json:"type"`
-	Message     string         `json:"message"`
-	Phase       string         `json:"phase"`
-	Images      []any          `json:"images"`
-	LocalImages []any          `json:"local_images"`
-	TextElements []any         `json:"text_elements"`
+	Type         string `json:"type"`
+	Message      string `json:"message"`
+	Phase        string `json:"phase"`
+	Images       []any  `json:"images"`
+	LocalImages  []any  `json:"local_images"`
+	TextElements []any  `json:"text_elements"`
 }
 
 type codexResponseItemPayload struct {
-	Type    string `json:"type"`
-	Role    string `json:"role"`
+	Type    string           `json:"type"`
+	Role    string           `json:"role"`
 	Content []map[string]any `json:"content"`
-	Phase string `json:"phase"`
+	Phase   string           `json:"phase"`
 }
 
 type codexResponseFunctionCallPayload struct {
@@ -420,6 +420,22 @@ func finalizeCodexTurn(turns *[]codex.Turn, turnsByID map[string]*codex.Turn, tu
 func turnHasUserMessage(items []map[string]any) bool {
 	for _, item := range items {
 		if toString(item["type"]) == "userMessage" {
+			return true
+		}
+	}
+	return false
+}
+
+func turnHasUserMessageWithText(items []map[string]any, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	for _, item := range items {
+		if toString(item["type"]) != "userMessage" {
+			continue
+		}
+		if strings.TrimSpace(codex.FirstUserText([]map[string]any{item})) == text {
 			return true
 		}
 	}

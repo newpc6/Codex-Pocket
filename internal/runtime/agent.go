@@ -740,9 +740,12 @@ func (a *Agent) DetachSession(ctx context.Context, threadID string) error {
 	if ok && record.Loaded && len(record.Thread.Turns) > 0 {
 		lastTurn := record.Thread.Turns[len(record.Thread.Turns)-1]
 		if lastTurn.Status == "inProgress" {
-			if err := a.InterruptTurn(ctx, threadID, lastTurn.ID); err != nil {
-				return err
+			interruptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if err := a.InterruptTurn(interruptCtx, threadID, lastTurn.ID); err != nil {
+				a.logger.Warn("failed to interrupt turn before detach; detaching local session anyway", "threadId", threadID, "turnId", lastTurn.ID, "error", err)
+				a.store.MarkTurnInterrupted(threadID, lastTurn.ID, "session detached by user")
 			}
+			cancel()
 		}
 	}
 
@@ -750,7 +753,15 @@ func (a *Agent) DetachSession(ctx context.Context, threadID string) error {
 	if err := a.client.Call(ctx, "thread/unsubscribe", map[string]any{
 		"threadId": threadID,
 	}, &response); err != nil {
-		return err
+		a.logger.Warn("failed to unsubscribe codex thread; detaching local session anyway", "threadId", threadID, "error", err)
+		a.store.SetSessionEnded(threadID, false)
+		a.store.SetSessionManaged(threadID, false)
+		a.store.SetSessionLoaded(threadID, false)
+		a.store.UpdateThreadStatus(threadID, codex.ThreadStatus{Type: "idle"})
+		a.broker.Publish("session.detached", map[string]string{
+			"threadId": threadID,
+		})
+		return nil
 	}
 
 	switch response.Status {
@@ -972,7 +983,7 @@ func (a *Agent) RollbackSession(ctx context.Context, threadID string, numTurns i
 
 	var response codex.ThreadRollbackResponse
 	if err := a.client.Call(ctx, "thread/rollback", map[string]any{
-		"threadId":  threadID,
+		"threadId": threadID,
 		"numTurns": numTurns,
 	}, &response); err != nil {
 		return SessionDetail{}, err
@@ -1060,7 +1071,7 @@ func (a *Agent) SteerTurn(ctx context.Context, threadID, turnID string, input []
 			if record.Thread.Turns[idx].ID != strings.TrimSpace(turnID) {
 				continue
 			}
-			record.Thread.Turns[idx] = ensureTurnHasStructuredUserInput(record.Thread.Turns[idx], input)
+			record.Thread.Turns[idx] = appendStructuredUserInput(record.Thread.Turns[idx], input)
 			a.store.RecordTurn(threadID, record.Thread.Turns[idx])
 			break
 		}
@@ -1081,6 +1092,18 @@ func ensureTurnHasStructuredUserInput(turn codex.Turn, input []map[string]any) c
 	items = append(items, composeUserMessageItemFromInput(input))
 	items = append(items, turn.Items...)
 	turn.Items = items
+	return turn
+}
+
+func appendStructuredUserInput(turn codex.Turn, input []map[string]any) codex.Turn {
+	if len(input) == 0 {
+		return turn
+	}
+	item := composeUserMessageItemFromInput(input)
+	if turnHasUserMessageWithText(turn.Items, codex.FirstUserText([]map[string]any{item})) {
+		return turn
+	}
+	turn.Items = append(turn.Items, item)
 	return turn
 }
 
@@ -1112,6 +1135,7 @@ func (a *Agent) InterruptTurn(ctx context.Context, threadID, turnID string) erro
 	}, &response); err != nil {
 		return err
 	}
+	a.store.MarkTurnInterrupted(threadID, turnID, "interrupted by user")
 	a.broker.Publish("turn.interrupted", map[string]string{
 		"threadId": threadID,
 		"turnId":   turnID,
@@ -1247,7 +1271,7 @@ func (a *Agent) handleNotification(ctx context.Context, notification codex.Notif
 		if json.Unmarshal(notification.Params, &payload) == nil {
 			a.store.RecordPlan(payload)
 		}
-	case "agentMessage/delta":
+	case "agentMessage/delta", "item/agentMessage/delta":
 		var payload codex.AgentMessageDeltaNotification
 		if json.Unmarshal(notification.Params, &payload) == nil {
 			a.store.RecordMessageDelta(payload.ThreadID, payload.TurnID, payload.ItemID, payload.Delta)
