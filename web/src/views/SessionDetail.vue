@@ -1260,10 +1260,35 @@ onUnmounted(() => {
 
 .tool-headline {
   margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   font-size: 12px;
   line-height: 1.5;
   color: var(--cf-text-secondary);
-  word-break: break-word;
+}
+
+.tool-type {
+  flex-shrink: 0;
+}
+
+.tool-command-tag {
+  display: inline-block;
+  min-width: 0;
+  max-width: min(100%, 560px);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(51, 136, 255, 0.08);
+  border: 1px solid rgba(151, 194, 255, 0.9);
+  color: var(--cf-primary-dark);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .tool-details {
