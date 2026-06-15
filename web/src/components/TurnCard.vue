@@ -626,7 +626,7 @@ function isStreamingItem(item: any): boolean {
 .aux-pre {
   font-size: 12px;
   white-space: pre-wrap;
-  max-height: 300px;
+  max-height: 220px;
   overflow: auto;
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
 }

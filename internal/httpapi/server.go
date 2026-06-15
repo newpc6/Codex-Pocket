@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -280,7 +281,26 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 
-		detail, err := s.agent.SessionDetail(ctx, sessionID)
+		offset := -1
+		if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil {
+				writeErrorMessage(w, http.StatusBadRequest, "invalid offset")
+				return
+			}
+			offset = parsed
+		}
+		limit := 0
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil {
+				writeErrorMessage(w, http.StatusBadRequest, "invalid limit")
+				return
+			}
+			limit = parsed
+		}
+
+		detail, err := s.agent.SessionDetail(ctx, sessionID, offset, limit)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err)
 			return

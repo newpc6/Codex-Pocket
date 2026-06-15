@@ -90,13 +90,17 @@
       <!-- 对话记录（中间滚动区域） -->
       <div class="chat-shell">
         <div class="chat-toolbar">
-          <el-tag size="small" type="info" round>{{ orderedTurns.length }} 轮对话</el-tag>
+          <el-tag size="small" type="info" round>{{ detail?.totalTurns ?? orderedTurns.length }} 轮对话</el-tag>
           <div style="display: flex; gap: 4px">
             <el-button size="small" text @click="expandAll">展开</el-button>
             <el-button size="small" text @click="collapseAll">折叠</el-button>
           </div>
         </div>
         <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
+          <div v-if="detail?.hasMoreHistory" class="history-load-row">
+            <el-button text size="small" :loading="loadingHistory" @click="loadOlderTurns">加载更早对话</el-button>
+          </div>
+
           <div v-if="detail && detail.turns.length === 0" class="empty-hint">
             {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
           </div>
@@ -162,6 +166,7 @@ const detaching = ref(false)
 const metaCollapsed = ref(true)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
+const loadingHistory = ref(false)
 
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
@@ -228,6 +233,21 @@ watch(orderedTurns, () => {
 async function refreshPage() {
   await app.refreshDashboard()
   await app.loadSession(sessionId)
+}
+
+async function loadOlderTurns() {
+  if (!detail.value?.hasMoreHistory || loadingHistory.value) return
+  loadingHistory.value = true
+  try {
+    const nextOffset = Math.max((detail.value.offset || 0) - (detail.value.limit || 8), 0)
+    await app.loadSession(sessionId, {
+      offset: nextOffset,
+      limit: detail.value.limit || 8,
+      appendHistory: true,
+    })
+  } finally {
+    loadingHistory.value = false
+  }
 }
 
 function onAction(cmd: string) {
@@ -634,6 +654,12 @@ onUnmounted(() => {
   padding: 40px 0;
   color: var(--cf-text-secondary);
   font-size: 14px;
+}
+
+.history-load-row {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 10px;
 }
 
 /* ---- 底部输入 ---- */

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -36,6 +37,11 @@ type Agent struct {
 	claudeTurnsMu    sync.Mutex
 	claudeRunning    map[string]runningClaudeTurn
 }
+
+const (
+	defaultSessionTurnLimit = 8
+	maxSessionTurnLimit     = 20
+)
 
 func NewAgent(cfg config.Config, logger *slog.Logger) *Agent {
 	localState, err := store.OpenLocalStateDB(cfg.StateDBPath)
@@ -168,9 +174,9 @@ func (a *Agent) ListSessions() []SessionSummary {
 	return summaries
 }
 
-func (a *Agent) SessionDetail(ctx context.Context, threadID string) (SessionDetail, error) {
+func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limit int) (SessionDetail, error) {
 	if isClaudeThreadID(threadID) {
-		return a.claudeSessionDetail(threadID)
+		return a.claudeSessionDetail(threadID, offset, limit)
 	}
 
 	record, snapshotOK := a.store.SnapshotSession(threadID)
@@ -190,7 +196,7 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string) (SessionDeta
 			if !ok {
 				return SessionDetail{}, err
 			}
-			return toSessionDetail(record, pendingCountForThread(a.store.SnapshotPending(), threadID)), nil
+			return paginateSessionDetail(toSessionDetail(record, pendingCountForThread(a.store.SnapshotPending(), threadID)), offset, limit), nil
 		}
 		return SessionDetail{}, err
 	}
@@ -208,7 +214,57 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string) (SessionDeta
 
 	pendingCount := pendingCountForThread(a.store.SnapshotPending(), threadID)
 
-	return toSessionDetail(record, pendingCount), nil
+	return paginateSessionDetail(toSessionDetail(record, pendingCount), offset, limit), nil
+}
+
+func paginateSessionDetail(detail SessionDetail, offset, limit int) SessionDetail {
+	total := len(detail.Turns)
+	start, end, normalizedLimit := normalizeSessionTurnWindow(total, offset, limit)
+	if start < 0 {
+		start = 0
+	}
+	if end < start {
+		end = start
+	}
+	window := []TurnDetail{}
+	if total > 0 && start < total {
+		window = append(window, detail.Turns[start:end]...)
+	}
+	detail.Turns = window
+	detail.TotalTurns = total
+	detail.Offset = start
+	detail.Limit = normalizedLimit
+	detail.HasMoreHistory = start > 0
+	return detail
+}
+
+func normalizeSessionTurnWindow(total, offset, limit int) (start, end, normalizedLimit int) {
+	if limit <= 0 {
+		limit = defaultSessionTurnLimit
+	}
+	if limit > maxSessionTurnLimit {
+		limit = maxSessionTurnLimit
+	}
+	if total <= 0 {
+		return 0, 0, limit
+	}
+	maxStart := int(math.Max(float64(total-limit), 0))
+	if offset < 0 {
+		start = maxStart
+	} else {
+		start = offset
+	}
+	if start > maxStart {
+		start = maxStart
+	}
+	if start < 0 {
+		start = 0
+	}
+	end = start + limit
+	if end > total {
+		end = total
+	}
+	return start, end, limit
 }
 
 func (a *Agent) PendingRequests() []PendingRequestView {

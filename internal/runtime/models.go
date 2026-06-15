@@ -70,8 +70,12 @@ type SessionSummary struct {
 }
 
 type SessionDetail struct {
-	Summary SessionSummary `json:"summary"`
-	Turns   []TurnDetail   `json:"turns"`
+	Summary        SessionSummary `json:"summary"`
+	Turns          []TurnDetail   `json:"turns"`
+	TotalTurns     int            `json:"totalTurns"`
+	Offset         int            `json:"offset"`
+	Limit          int            `json:"limit"`
+	HasMoreHistory bool           `json:"hasMoreHistory"`
 }
 
 type TurnDetail struct {

@@ -65,6 +65,10 @@ export interface Turn {
 export interface SessionDetail {
   summary: SessionSummary
   turns: Turn[]
+  totalTurns: number
+  offset: number
+  limit: number
+  hasMoreHistory: boolean
 }
 
 export interface DashboardData {
@@ -153,9 +157,21 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  async function loadSession(id: string) {
+  async function loadSession(id: string, options?: { offset?: number; limit?: number; appendHistory?: boolean }) {
     try {
-      const res = await api.get<SessionDetail>(`/sessions/${id}`)
+      const params: Record<string, number> = {}
+      if (typeof options?.offset === 'number') params.offset = options.offset
+      if (typeof options?.limit === 'number') params.limit = options.limit
+      const res = await api.get<SessionDetail>(`/sessions/${id}`, { params })
+      if (options?.appendHistory && sessionDetails.value[id]) {
+        const existing = sessionDetails.value[id]
+        const mergedTurns = [...res.data.turns, ...existing.turns]
+        sessionDetails.value[id] = {
+          ...res.data,
+          turns: mergedTurns,
+        }
+        return
+      }
       sessionDetails.value[id] = res.data
     } catch (e: any) {
       error.value = e.response?.data?.error || e.message
