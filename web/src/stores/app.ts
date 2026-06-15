@@ -145,6 +145,7 @@ export const useAppStore = defineStore('app', () => {
   const sseConnected = ref(false)
   const sseStatus = ref<SSEStatus>('disconnected')
   const lastEvent = ref<SSEEvent | null>(null)
+  const compactingSessionIds = ref<Set<string>>(new Set())
 
   // Track which sessions are currently being viewed (for targeted refresh)
   const activeSessionIds = ref<Set<string>>(new Set())
@@ -283,6 +284,14 @@ export const useAppStore = defineStore('app', () => {
     sessionDetails.value[id] = detail
   }
 
+  function markSessionCompacting(id: string, compacting: boolean) {
+    if (!id) return
+    const next = new Set(compactingSessionIds.value)
+    if (compacting) next.add(id)
+    else next.delete(id)
+    compactingSessionIds.value = next
+  }
+
   function scheduleDashboardRefresh(delay = 500) {
     if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer)
     dashboardRefreshTimer = setTimeout(() => {
@@ -419,6 +428,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function compactSession(id: string) {
+    markSessionCompacting(id, true)
     await api.post(`/sessions/${id}/compact`)
     await refreshDashboard()
     await loadSession(id)
@@ -565,6 +575,7 @@ export const useAppStore = defineStore('app', () => {
     // Turn events
     sseService.on('turn.started', async (event: SSEEvent) => {
       const threadId = event.payload?.threadId as string
+      if (threadId) markSessionCompacting(threadId, false)
       if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
@@ -580,6 +591,7 @@ export const useAppStore = defineStore('app', () => {
 
     sseService.on('turn.interrupted', async (event: SSEEvent) => {
       const threadId = event.payload?.threadId as string
+      if (threadId) markSessionCompacting(threadId, false)
       if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
@@ -589,6 +601,15 @@ export const useAppStore = defineStore('app', () => {
     // Sessions refreshed
     sseService.on('sessions.refreshed', async () => {
       scheduleDashboardRefresh(500)
+    })
+
+    sseService.on('session.compacting', async (event: SSEEvent) => {
+      const threadId = event.payload?.threadId as string
+      if (!threadId) return
+      markSessionCompacting(threadId, true)
+      if (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId]) {
+        scheduleSessionLoad(threadId, 350)
+      }
     })
   }
 
@@ -637,7 +658,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    dashboard, sessionDetails, selectedAgentId, loading, error,
+    dashboard, sessionDetails, selectedAgentId, loading, error, compactingSessionIds,
     sseConnected, sseStatus, lastEvent, activeSessionIds,
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
     refreshDashboard, loadSession, resumeSession, detachSession, endSession, archiveSession,

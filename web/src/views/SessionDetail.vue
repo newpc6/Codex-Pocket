@@ -162,6 +162,11 @@
             <el-button text size="small" :loading="loadingHistory" @click="loadOlderTurns">加载更早对话</el-button>
           </div>
 
+          <div v-if="isCompactingSession && !runningTurn" class="activity-row">
+            <span class="activity-spinner"></span>
+            <span>正在自动压缩上下文</span>
+          </div>
+
           <div v-if="detail && detail.turns.length === 0" class="empty-hint">
             {{ summary?.ended ? '会话已结束，没有更多对话。' : '还没有对话，在下方发送指令开始。' }}
           </div>
@@ -170,7 +175,12 @@
             <section v-for="turn in orderedTurns" :key="turn.id" class="turn-stream">
               <div class="turn-anchor">
                 <span class="turn-title">Turn #{{ turnNumber(turn.id) }}</span>
-                <span class="turn-meta">{{ turn.status === 'inProgress' ? '执行中' : formatTimestamp(turn.startedAt) }}</span>
+                <span class="turn-meta">{{ turnStatusText(turn) }}</span>
+              </div>
+
+              <div v-if="shouldShowTurnActivity(turn)" class="activity-row">
+                <span class="activity-spinner"></span>
+                <span>{{ liveActivityText(turn) }}</span>
               </div>
 
               <div
@@ -266,10 +276,12 @@
               <details
                 v-if="turnProcessEntries(turn).length > 0"
                 class="turn-process"
-                :open="turn.status === 'inProgress'"
               >
                 <summary class="turn-process-summary">
-                  <span>{{ turnProcessSummary(turn) }}</span>
+                  <span class="turn-process-title">
+                    <span v-if="turn.status === 'inProgress'" class="activity-spinner is-small"></span>
+                    <span>{{ turnProcessSummary(turn) }}</span>
+                  </span>
                   <span v-if="turn.durationMs > 0" class="turn-process-duration">{{ formatDurationMs(turn.durationMs) }}</span>
                 </summary>
 
@@ -469,6 +481,7 @@ const isStreamingReply = computed(() => {
   if (!turn) return false
   return turn.items?.some((item: TurnItem) => item.type === 'agentMessage' && item.body)
 })
+const isCompactingSession = computed(() => app.compactingSessionIds.has(sessionId))
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
@@ -583,10 +596,30 @@ function turnProcessSummary(turn: Turn): string {
   const fileChangeCount = entries.filter((entry) => entry.item.type === 'fileChange').length + diffSummary(turn.diff).files.length
   const otherCount = Math.max(entries.length - commandCount - fileChangeCount, 0)
   const parts: string[] = []
+  if (turn.status === 'inProgress') parts.push(liveActivityText(turn))
   if (commandCount > 0) parts.push(`已运行 ${commandCount} 条命令`)
   if (fileChangeCount > 0) parts.push(`修改 ${fileChangeCount} 个文件`)
   if (otherCount > 0) parts.push(`${otherCount} 条过程`)
   return parts.join(' · ') || `${entries.length} 条过程`
+}
+
+function liveActivityText(turn: Turn): string {
+  if (isCompactingSession.value) return '正在自动压缩上下文'
+  if (turn.items.some((item) => item.type === 'agentMessage' && item.body)) return 'Codex 正在回复'
+  if (turn.items.some((item) => isCommandLikeItem(item))) return '正在运行命令'
+  if (turn.items.some((item) => item.type === 'reasoning')) return '正在思考'
+  return '正在思考'
+}
+
+function turnStatusText(turn: Turn): string {
+  if (turn.status === 'inProgress') return liveActivityText(turn)
+  return formatTimestamp(turn.startedAt)
+}
+
+function shouldShowTurnActivity(turn: Turn): boolean {
+  if (turn.status !== 'inProgress') return false
+  if (isCompactingSession.value) return true
+  return !turn.items.some((item) => item.type === 'agentMessage' && item.body)
 }
 
 function formatDurationMs(ms: number): string {
@@ -1555,6 +1588,41 @@ onUnmounted(() => {
   color: var(--cf-text-secondary);
 }
 
+.activity-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  width: min(100%, 860px);
+  padding: 10px 14px;
+  border: 1px solid rgba(216, 230, 251, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.activity-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid rgba(51, 136, 255, 0.22);
+  border-top-color: var(--cf-primary);
+  animation: activity-spin 0.85s linear infinite;
+}
+
+.activity-spinner.is-small {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+@keyframes activity-spin {
+  to { transform: rotate(360deg); }
+}
+
 .turn-process {
   width: min(100%, 860px);
   margin-left: 0;
@@ -1574,6 +1642,13 @@ onUnmounted(() => {
   color: var(--cf-text-secondary);
   font-size: 12px;
   font-weight: 650;
+}
+
+.turn-process-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .turn-process-duration {
