@@ -167,18 +167,56 @@
                     {{ item.title }}
                   </div>
 
-                  <div v-if="item.body" class="message-body" :class="{ 'is-code': isCodeType(item.type) }">
-                    <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
-                    <div v-else class="markdown-body">
-                      <VueMarkdown :source="item.body" :options="markdownOptions" />
-                      <span v-if="isStreamingItem(turn, item)" class="typing-cursor">|</span>
-                    </div>
-                  </div>
+                  <template v-if="isStructuredToolItem(item)">
+                    <div class="tool-card">
+                      <div class="tool-summary">
+                        <div class="tool-main">
+                          <div class="tool-name">{{ toolDisplayName(item) }}</div>
+                          <div v-if="toolHeadline(item)" class="tool-headline">{{ toolHeadline(item) }}</div>
+                        </div>
+                        <div v-if="item.status" class="tool-state" :class="toolStatusClass(item.status)">
+                          {{ item.status }}
+                        </div>
+                      </div>
 
-                  <details v-if="item.auxiliary" class="message-aux">
-                    <summary>详细输出</summary>
-                    <pre>{{ item.auxiliary }}</pre>
-                  </details>
+                      <div v-if="toolMetadataRows(item).length > 0" class="tool-meta-grid">
+                        <div
+                          v-for="row in toolMetadataRows(item)"
+                          :key="`${item.id}-${row.label}`"
+                          class="tool-meta-item"
+                        >
+                          <span class="tool-meta-label">{{ row.label }}</span>
+                          <span class="tool-meta-value">{{ row.value }}</span>
+                        </div>
+                      </div>
+
+                      <details v-if="hasStructuredToolDetails(item)" class="tool-details">
+                        <summary>查看原始内容</summary>
+                        <div v-if="item.body" class="message-body is-code">
+                          <pre>{{ item.body }}</pre>
+                        </div>
+                        <div v-if="item.auxiliary" class="message-aux tool-output">
+                          <div class="tool-output-title">输出</div>
+                          <pre>{{ item.auxiliary }}</pre>
+                        </div>
+                      </details>
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <div v-if="item.body" class="message-body" :class="{ 'is-code': isCodeType(item.type) }">
+                      <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
+                      <div v-else class="markdown-body">
+                        <VueMarkdown :source="renderMarkdown(item.body)" :options="markdownOptions" />
+                        <span v-if="isStreamingItem(turn, item)" class="typing-cursor">|</span>
+                      </div>
+                    </div>
+
+                    <details v-if="item.auxiliary" class="message-aux">
+                      <summary>详细输出</summary>
+                      <pre>{{ item.auxiliary }}</pre>
+                    </details>
+                  </template>
                 </div>
               </div>
 
@@ -278,6 +316,13 @@ const markdownOptions = {
   typographer: true,
 }
 
+type ToolMetaRow = {
+  label: string
+  value: string
+}
+
+const localAssetBase = '/api/v1/assets/local-image'
+
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
 window.addEventListener('resize', onResize)
@@ -352,6 +397,101 @@ function bubbleClass(type: string) {
 
 function isCodeType(type: string): boolean {
   return ['commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall'].includes(type)
+}
+
+function isStructuredToolItem(item: TurnItem): boolean {
+  return item.type === 'commandExecution' || item.type === 'dynamicToolCall'
+}
+
+function toolDisplayName(item: TurnItem): string {
+  if (item.type === 'commandExecution') return item.title || 'shell_command'
+  const raw = item.title || item.type
+  return raw.trim() || item.type
+}
+
+function toolHeadline(item: TurnItem): string {
+  if (!item.body) return ''
+  const body = item.body.trim()
+  if (!body) return ''
+  if (item.type === 'commandExecution') {
+    const firstLine = body.split('\n')[0]?.trim() || ''
+    return firstLine
+  }
+  if (looksLikeStructuredPayload(body)) return '工具输入已折叠，展开可查看详细参数'
+  return body.length > 180 ? `${body.slice(0, 180).trim()}...` : body
+}
+
+function toolMetadataRows(item: TurnItem): ToolMetaRow[] {
+  const rows: ToolMetaRow[] = []
+  if (item.type === 'commandExecution') {
+    const command = item.body?.split('\n')[0]?.trim()
+    if (command) rows.push({ label: '命令', value: command })
+  }
+  const cwd = item.metadata?.cwd?.trim()
+  if (cwd) rows.push({ label: '目录', value: cwd })
+  const tool = item.metadata?.tool?.trim()
+  if (tool && item.type !== 'commandExecution') rows.push({ label: '工具', value: tool })
+  const progress = item.metadata?.progress?.trim()
+  if (progress) rows.push({ label: '进度', value: progress })
+  return rows
+}
+
+function hasStructuredToolDetails(item: TurnItem): boolean {
+  return Boolean((item.body && item.body.trim()) || (item.auxiliary && item.auxiliary.trim()))
+}
+
+function toolStatusClass(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized.includes('complete') || normalized.includes('success')) return 'is-success'
+  if (normalized.includes('run') || normalized.includes('progress')) return 'is-running'
+  if (normalized.includes('wait')) return 'is-waiting'
+  if (normalized.includes('fail') || normalized.includes('error') || normalized.includes('deny')) return 'is-error'
+  return 'is-neutral'
+}
+
+function looksLikeStructuredPayload(text: string): boolean {
+  const trimmed = text.trim()
+  return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))
+}
+
+function renderMarkdown(source: string): string {
+  return normalizeAttachedImageSyntax(rewriteMarkdownImagePaths(source || ''))
+}
+
+function rewriteMarkdownImagePaths(source: string): string {
+  const token = localStorage.getItem('cf_token') || ''
+  return source.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_full, alt: string, rawPath: string) => {
+    const normalizedPath = normalizeImagePath(rawPath)
+    if (!normalizedPath) return `![${alt}](${rawPath})`
+    return `![${alt}](${buildLocalImageUrl(normalizedPath, token)})`
+  })
+}
+
+function normalizeAttachedImageSyntax(source: string): string {
+  const token = localStorage.getItem('cf_token') || ''
+  return source.replace(/\[Attached image:\s*([^\]]+?)\]/g, (_full, rawPath: string) => {
+    const normalizedPath = normalizeImagePath(rawPath)
+    if (!normalizedPath) return _full
+    return `\n\n![Attached image](${buildLocalImageUrl(normalizedPath, token)})\n\n`
+  })
+}
+
+function normalizeImagePath(rawPath: string): string {
+  const trimmed = rawPath.trim().replace(/^<|>$/g, '').replace(/^['"]|['"]$/g, '')
+  if (!trimmed) return ''
+  if (/^(https?:)?\/\//i.test(trimmed)) return trimmed
+  if (/^(data:image\/)/i.test(trimmed)) return trimmed
+  if (/^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('/')) return trimmed
+  return ''
+}
+
+function buildLocalImageUrl(path: string, token: string): string {
+  if (/^(https?:)?\/\//i.test(path) || /^(data:image\/)/i.test(path)) {
+    return path
+  }
+  const params = new URLSearchParams({ path })
+  if (token) params.set('token', token)
+  return `${localAssetBase}?${params.toString()}`
 }
 
 function isStreamingItem(turn: Turn, item: TurnItem): boolean {
@@ -1131,6 +1271,130 @@ onUnmounted(() => {
   color: var(--cf-text-secondary);
 }
 
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cf-text-heavy);
+}
+
+.tool-headline {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--cf-text-secondary);
+  word-break: break-word;
+}
+
+.tool-state {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.tool-state.is-success {
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.tool-state.is-running {
+  color: #c2410c;
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.22);
+}
+
+.tool-state.is-waiting {
+  color: #7c3aed;
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+.tool-state.is-error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+.tool-state.is-neutral {
+  color: var(--cf-text-secondary);
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.tool-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.tool-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(216, 230, 251, 0.95);
+}
+
+.tool-meta-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cf-text-lighter);
+}
+
+.tool-meta-value {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--cf-text-secondary);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  word-break: break-all;
+}
+
+.tool-details {
+  border-top: 1px solid rgba(216, 230, 251, 0.9);
+  padding-top: 10px;
+}
+
+.tool-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--cf-text-secondary);
+  font-weight: 600;
+}
+
+.tool-output {
+  margin-top: 10px;
+}
+
+.tool-output-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cf-text-secondary);
+}
+
 .markdown-body :deep(*) {
   word-break: break-word;
 }
@@ -1171,6 +1435,18 @@ onUnmounted(() => {
   padding: 10px 12px;
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.06);
+}
+
+.markdown-body :deep(img) {
+  display: block;
+  max-width: min(100%, 520px);
+  width: auto;
+  height: auto;
+  margin: 12px 0 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  box-shadow: 0 10px 24px rgba(15, 46, 106, 0.08);
+  background: #fff;
 }
 
 .typing-cursor {

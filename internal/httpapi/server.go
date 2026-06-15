@@ -61,6 +61,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/approvals", s.handleApprovals)
 	s.mux.HandleFunc("/api/v1/approvals/", s.handleApprovalByID)
 	s.mux.HandleFunc("/api/v1/uploads/image", s.handleImageUpload)
+	s.mux.HandleFunc("/api/v1/assets/local-image", s.handleLocalImage)
 
 	// Static file serving for web UI
 	if s.cfg.WebDistPath != "" {
@@ -572,6 +573,57 @@ func (s *Server) handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		"name": item.Name,
 		"size": item.Size,
 	})
+}
+
+func (s *Server) handleLocalImage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		writeErrorMessage(w, http.StatusBadRequest, "image path is required")
+		return
+	}
+
+	file, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeErrorMessage(w, http.StatusNotFound, "image not found")
+			return
+		}
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer file.Close()
+
+	head := make([]byte, 512)
+	n, err := file.Read(head)
+	if err != nil && err != io.EOF {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	contentType := http.DetectContentType(head[:n])
+	if !strings.HasPrefix(contentType, "image/") {
+		writeErrorMessage(w, http.StatusBadRequest, "requested file is not an image")
+		return
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
 func (s *Server) buildTurnInput(

@@ -48,6 +48,7 @@ export interface TurnItem {
   body: string
   status: string
   auxiliary: string
+  metadata?: Record<string, string>
 }
 
 export interface Turn {
