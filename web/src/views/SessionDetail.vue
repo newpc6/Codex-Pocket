@@ -634,8 +634,9 @@ function turnProcessSummary(turn: Turn): string {
 
 function liveActivityText(turn: Turn): string {
   if (isCompactingSession.value) return '正在自动压缩上下文'
-  if (turn.items.some((item) => item.type === 'agentMessage' && item.body)) return 'Codex 正在回复'
+  if (isEditingFiles(turn)) return '正在编辑文件'
   if (turn.items.some((item) => isCommandLikeItem(item))) return '正在运行命令'
+  if (turn.items.some((item) => item.type === 'agentMessage' && item.body)) return 'Codex 正在回复'
   if (turn.items.some((item) => item.type === 'reasoning')) return '正在思考'
   return '正在思考'
 }
@@ -647,8 +648,13 @@ function turnStatusText(turn: Turn): string {
 
 function shouldShowTurnActivity(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
-  if (isCompactingSession.value) return true
+  if (isCompactingSession.value || isEditingFiles(turn)) return true
+  if (turn.items.some((item) => isCommandLikeItem(item))) return true
   return !turn.items.some((item) => item.type === 'agentMessage' && item.body)
+}
+
+function isEditingFiles(turn: Turn): boolean {
+  return Boolean(turn.diff?.trim()) || turn.items.some((item) => item.type === 'fileChange')
 }
 
 function formatDurationMs(ms: number): string {
@@ -796,7 +802,10 @@ function buildLocalImageUrl(path: string, token: string): string {
 function isStreamingItem(turn: Turn, item: TurnItem, index: number): boolean {
   if (turn.status !== 'inProgress' || item.type !== 'agentMessage') return false
   for (let i = turn.items.length - 1; i > index; i -= 1) {
-    if (turn.items[i]?.type === 'agentMessage') return false
+    const next = turn.items[i]
+    if (!next) continue
+    if (next.type !== 'reasoning' && next.type !== 'plan') return false
+    if (next.body?.trim() || next.auxiliary?.trim() || next.status?.trim()) return false
   }
   return true
 }
