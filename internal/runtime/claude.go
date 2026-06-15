@@ -833,6 +833,40 @@ func composeUserMessageItem(text string) map[string]any {
 	}
 }
 
+func composeUserMessageItemFromInput(input []map[string]any) map[string]any {
+	content := make([]any, 0, len(input))
+	for _, item := range input {
+		itemType := strings.TrimSpace(toString(item["type"]))
+		switch itemType {
+		case "text":
+			text := strings.TrimSpace(toString(item["text"]))
+			if text == "" {
+				continue
+			}
+			content = append(content, map[string]any{
+				"type": "text",
+				"text": text,
+			})
+		case "localImage":
+			path := strings.TrimSpace(toString(item["path"]))
+			if path == "" {
+				continue
+			}
+			content = append(content, map[string]any{
+				"type": "localImage",
+				"path": path,
+			})
+		}
+	}
+	if len(content) == 0 {
+		return composeUserMessageItem(flattenClaudeInput(input))
+	}
+	return map[string]any{
+		"type":    "userMessage",
+		"content": content,
+	}
+}
+
 func extractClaudeMessageText(message any) string {
 	messageMap, ok := message.(map[string]any)
 	if !ok {
@@ -848,12 +882,19 @@ func extractClaudeMessageText(message any) string {
 			if !ok {
 				continue
 			}
-			if strings.TrimSpace(toString(itemMap["type"])) != "text" {
-				continue
-			}
-			text := strings.TrimSpace(toString(itemMap["text"]))
-			if text != "" {
-				parts = append(parts, text)
+			switch strings.TrimSpace(toString(itemMap["type"])) {
+			case "text":
+				text := strings.TrimSpace(toString(itemMap["text"]))
+				if text != "" {
+					parts = append(parts, text)
+				}
+			case "image", "localImage":
+				if path := strings.TrimSpace(toString(itemMap["path"])); path != "" {
+					parts = append(parts, fmt.Sprintf("[Attached image: %s]", path))
+				}
+				if url := strings.TrimSpace(toString(itemMap["url"])); url != "" {
+					parts = append(parts, fmt.Sprintf("![Attached image](%s)", url))
+				}
 			}
 		}
 		return strings.TrimSpace(strings.Join(parts, "\n"))
@@ -2168,7 +2209,7 @@ func (a *Agent) startClaudeSession(ctx context.Context, cwd, prompt string) (Ses
 	a.store.SetSessionLoaded(threadID, true)
 	a.store.SetRuntimeAttachMode(threadID, "new_session")
 	a.store.SetSessionBinding(threadID, "claude", sessionID)
-	a.store.RecordTurn(threadID, buildClaudePendingTurn(turnID, trimmedPrompt, startedAt))
+	a.store.RecordTurn(threadID, buildClaudePendingTurn(turnID, []map[string]any{textInput(trimmedPrompt)}, startedAt))
 	a.setRunningClaudeTurn(threadID, runningClaudeTurn{
 		TurnID: turnID,
 		Cancel: func() {
@@ -2349,7 +2390,7 @@ func (a *Agent) startClaudeTurn(ctx context.Context, threadID string, input []ma
 		a.store.SetSessionBinding(threadID, "claude", startedSessionID)
 		record.Thread.RuntimeSessionID = stringPtr(startedSessionID)
 	}
-	a.store.RecordTurn(threadID, buildClaudePendingTurn(turnID, prompt, startedAt))
+	a.store.RecordTurn(threadID, buildClaudePendingTurn(turnID, input, startedAt))
 	a.setRunningClaudeTurn(threadID, runningClaudeTurn{
 		TurnID: turnID,
 		Cancel: func() {
@@ -2534,10 +2575,10 @@ func (a *Agent) forceStopClaudeTurn(threadID, turnID, message string) {
 	a.store.UpsertThread(record.Thread)
 }
 
-func buildClaudePendingTurn(turnID, prompt string, startedAt int64) codex.Turn {
+func buildClaudePendingTurn(turnID string, input []map[string]any, startedAt int64) codex.Turn {
 	turn := codex.Turn{
 		ID:     turnID,
-		Items:  []map[string]any{composeUserMessageItem(prompt)},
+		Items:  []map[string]any{composeUserMessageItemFromInput(input)},
 		Status: "inProgress",
 	}
 	turn.StartedAt = &startedAt

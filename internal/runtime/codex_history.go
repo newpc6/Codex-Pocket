@@ -47,18 +47,18 @@ type codexTurnAbortedPayload struct {
 }
 
 type codexEventMessagePayload struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-	Phase   string `json:"phase"`
+	Type        string         `json:"type"`
+	Message     string         `json:"message"`
+	Phase       string         `json:"phase"`
+	Images      []any          `json:"images"`
+	LocalImages []any          `json:"local_images"`
+	TextElements []any         `json:"text_elements"`
 }
 
 type codexResponseItemPayload struct {
 	Type    string `json:"type"`
 	Role    string `json:"role"`
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
+	Content []map[string]any `json:"content"`
 	Phase string `json:"phase"`
 }
 
@@ -211,7 +211,7 @@ func parseCodexSessionLog(path string) (codexHistoryParseResult, error) {
 					managedNow = true
 				}
 			case "user_message":
-				text := strings.TrimSpace(payload.Message)
+				text := buildCodexEventMessageText(payload)
 				if text == "" {
 					continue
 				}
@@ -267,7 +267,7 @@ func parseCodexSessionLog(path string) (codexHistoryParseResult, error) {
 				if json.Unmarshal(envelope.Payload, &payload) != nil {
 					continue
 				}
-				text := joinResponseText(payload.Content)
+				text := flattenCodexMessageContent(payload.Content)
 				switch strings.TrimSpace(payload.Role) {
 				case "user":
 					if text == "" {
@@ -458,22 +458,64 @@ func turnHasAgentText(items []map[string]any, text string) bool {
 	return false
 }
 
-func joinResponseText(items []struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}) string {
-	parts := make([]string, 0, len(items))
-	for _, item := range items {
-		if strings.TrimSpace(item.Type) != "output_text" && strings.TrimSpace(item.Type) != "input_text" {
-			continue
-		}
-		text := strings.TrimSpace(item.Text)
-		if text == "" {
-			continue
-		}
+func buildCodexEventMessageText(payload codexEventMessagePayload) string {
+	parts := make([]string, 0, 1+len(payload.LocalImages)+len(payload.Images))
+	if text := strings.TrimSpace(payload.Message); text != "" {
 		parts = append(parts, text)
 	}
-	return strings.Join(parts, "\n")
+	parts = append(parts, flattenCodexImageList(payload.LocalImages)...)
+	parts = append(parts, flattenCodexImageList(payload.Images)...)
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func flattenCodexMessageContent(items []map[string]any) string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		itemType := strings.TrimSpace(toString(item["type"]))
+		switch itemType {
+		case "output_text", "input_text", "text":
+			text := strings.TrimSpace(toString(item["text"]))
+			if text != "" {
+				parts = append(parts, text)
+			}
+		case "input_image", "output_image", "image", "localImage":
+			if imageMarkdown := codexImageMarkdownFromMap(item); imageMarkdown != "" {
+				parts = append(parts, imageMarkdown)
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func flattenCodexImageList(items []any) []string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		switch typed := item.(type) {
+		case string:
+			if text := strings.TrimSpace(typed); text != "" {
+				parts = append(parts, fmt.Sprintf("[Attached image: %s]", text))
+			}
+		case map[string]any:
+			if imageMarkdown := codexImageMarkdownFromMap(typed); imageMarkdown != "" {
+				parts = append(parts, imageMarkdown)
+			}
+		}
+	}
+	return parts
+}
+
+func codexImageMarkdownFromMap(item map[string]any) string {
+	for _, key := range []string{"path", "file_path", "local_path"} {
+		if path := strings.TrimSpace(toString(item[key])); path != "" {
+			return fmt.Sprintf("[Attached image: %s]", path)
+		}
+	}
+	for _, key := range []string{"image_url", "url"} {
+		if url := strings.TrimSpace(toString(item[key])); url != "" {
+			return fmt.Sprintf("![Attached image](%s)", url)
+		}
+	}
+	return ""
 }
 
 func extractTurnIDFromTaskStarted(raw json.RawMessage) string {

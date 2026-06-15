@@ -66,7 +66,7 @@ func TestFinishClaudeTurnMarksThreadIdle(t *testing.T) {
 		CWD:           "/tmp/project",
 		Source:        []byte(`"claude"`),
 	})
-	sessionStore.RecordTurn(threadID, buildClaudePendingTurn("turn-1", "hello", startedAt))
+	sessionStore.RecordTurn(threadID, buildClaudePendingTurn("turn-1", []map[string]any{textInput("hello")}, startedAt))
 
 	agent := &Agent{store: sessionStore, broker: NewBroker()}
 	agent.finishClaudeTurn(threadID, "turn-1", claudeTurnExecutionResult{
@@ -561,7 +561,7 @@ func TestForceStopClaudeTurnMarksTurnStopped(t *testing.T) {
 		CWD:           "/tmp/project",
 		Source:        []byte(`"claude"`),
 	})
-	sessionStore.RecordTurn(threadID, buildClaudePendingTurn("turn-2", "hello", startedAt))
+	sessionStore.RecordTurn(threadID, buildClaudePendingTurn("turn-2", []map[string]any{textInput("hello")}, startedAt))
 
 	agent := &Agent{
 		store:         sessionStore,
@@ -676,5 +676,31 @@ func TestDecodeClaudePermissionDecision(t *testing.T) {
 	}
 	if decision.Allow {
 		t.Fatalf("Allow = true, want false")
+	}
+}
+
+func TestBuildClaudePendingTurnPreservesLocalImageInput(t *testing.T) {
+	startedAt := time.Now().Unix()
+	turn := buildClaudePendingTurn("turn-image", []map[string]any{
+		textInput("check this"),
+		{"type": "localImage", "path": "C:\\images\\input.png"},
+	}, startedAt)
+
+	if len(turn.Items) != 1 {
+		t.Fatalf("len(turn.Items) = %d, want 1", len(turn.Items))
+	}
+	content, ok := turn.Items[0]["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("content = %#v, want 2 items", turn.Items[0]["content"])
+	}
+	second, ok := content[1].(map[string]any)
+	if !ok {
+		t.Fatalf("content[1] type = %T, want map[string]any", content[1])
+	}
+	if got := second["type"]; got != "localImage" {
+		t.Fatalf("content[1].type = %v, want localImage", got)
+	}
+	if got := second["path"]; got != "C:\\images\\input.png" {
+		t.Fatalf("content[1].path = %v", got)
 	}
 }

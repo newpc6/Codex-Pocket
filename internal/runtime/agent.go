@@ -788,6 +788,7 @@ func (a *Agent) StartTurn(ctx context.Context, threadID string, input []map[stri
 	}
 
 	a.store.SetSessionEnded(threadID, false)
+	response.Turn = ensureTurnHasStructuredUserInput(response.Turn, input)
 	a.store.RecordTurn(threadID, response.Turn)
 	a.broker.Publish("turn.started", map[string]string{
 		"threadId": threadID,
@@ -832,11 +833,33 @@ func (a *Agent) SteerTurn(ctx context.Context, threadID, turnID string, input []
 		return err
 	}
 
+	if record, ok := a.store.SnapshotSession(threadID); ok {
+		for idx := range record.Thread.Turns {
+			if record.Thread.Turns[idx].ID != strings.TrimSpace(turnID) {
+				continue
+			}
+			record.Thread.Turns[idx] = ensureTurnHasStructuredUserInput(record.Thread.Turns[idx], input)
+			a.store.RecordTurn(threadID, record.Thread.Turns[idx])
+			break
+		}
+	}
+
 	a.broker.Publish("turn.steered", map[string]string{
 		"threadId": threadID,
 		"turnId":   turnID,
 	})
 	return nil
+}
+
+func ensureTurnHasStructuredUserInput(turn codex.Turn, input []map[string]any) codex.Turn {
+	if len(input) == 0 || turnHasUserMessage(turn.Items) {
+		return turn
+	}
+	items := make([]map[string]any, 0, len(turn.Items)+1)
+	items = append(items, composeUserMessageItemFromInput(input))
+	items = append(items, turn.Items...)
+	turn.Items = items
+	return turn
 }
 
 func (a *Agent) InterruptTurn(ctx context.Context, threadID, turnID string) error {
