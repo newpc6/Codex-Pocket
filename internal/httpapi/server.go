@@ -689,6 +689,14 @@ func (s *Server) handleLocalImage(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, "image path is required")
 		return
 	}
+	if uploadID, ok := strings.CutPrefix(path, "upload:"); ok {
+		resolved, err := s.uploads.Resolve(uploadID)
+		if err != nil {
+			writeErrorMessage(w, http.StatusNotFound, "uploaded image not found or expired")
+			return
+		}
+		path = resolved
+	}
 
 	file, err := os.Open(filepath.Clean(path))
 	if err != nil {

@@ -236,10 +236,24 @@
                   <template v-else>
                     <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
                       <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
-                      <div v-else class="markdown-body">
-                        <VueMarkdown :source="renderMarkdown(entry.item.body)" :options="markdownOptions" />
-                        <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
-                      </div>
+                      <template v-else>
+                        <div v-if="itemImages(entry.item).length" class="image-strip">
+                          <el-image
+                            v-for="image in itemImages(entry.item)"
+                            :key="image.url"
+                            class="message-thumb"
+                            :src="image.url"
+                            :preview-src-list="itemPreviewUrls(entry.item)"
+                            :initial-index="image.index"
+                            fit="cover"
+                            preview-teleported
+                          />
+                        </div>
+                        <div v-if="itemText(entry.item)" class="markdown-body">
+                          <VueMarkdown :source="renderMarkdown(itemText(entry.item))" :options="markdownOptions" />
+                          <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
+                        </div>
+                      </template>
                     </div>
 
                     <details v-if="entry.item.auxiliary" class="message-aux">
@@ -338,10 +352,24 @@
                       <template v-else>
                         <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
                           <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
-                          <div v-else class="markdown-body">
-                            <VueMarkdown :source="renderMarkdown(entry.item.body)" :options="markdownOptions" />
-                            <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
-                          </div>
+                          <template v-else>
+                            <div v-if="itemImages(entry.item).length" class="image-strip">
+                              <el-image
+                                v-for="image in itemImages(entry.item)"
+                                :key="image.url"
+                                class="message-thumb"
+                                :src="image.url"
+                                :preview-src-list="itemPreviewUrls(entry.item)"
+                                :initial-index="image.index"
+                                fit="cover"
+                                preview-teleported
+                              />
+                            </div>
+                            <div v-if="itemText(entry.item)" class="markdown-body">
+                              <VueMarkdown :source="renderMarkdown(itemText(entry.item))" :options="markdownOptions" />
+                              <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
+                            </div>
+                          </template>
                         </div>
 
                         <details v-if="entry.item.auxiliary" class="message-aux">
@@ -453,6 +481,7 @@ const localAssetBase = '/api/v1/assets/local-image'
 type TurnItemEntry = { item: TurnItem; index: number }
 type DiffFileSummary = { path: string; additions: number; deletions: number }
 type DiffSummary = { files: DiffFileSummary[]; additions: number; deletions: number }
+type MessageImage = { url: string; alt: string; index: number }
 const diffSummaryCache = new Map<string, DiffSummary>()
 
 const isMobile = ref(window.innerWidth <= 768)
@@ -667,6 +696,65 @@ function diffSummary(diff: string): DiffSummary {
 
 function renderMarkdown(source: string): string {
   return normalizeAttachedImageSyntax(rewriteMarkdownImagePaths(source || ''))
+}
+
+function messageImages(source: string): MessageImage[] {
+  const token = localStorage.getItem('cf_token') || ''
+  const images: MessageImage[] = []
+  const seen = new Set<string>()
+  const addImage = (alt: string, rawPath: string) => {
+    const normalizedPath = normalizeImagePath(rawPath)
+    if (!normalizedPath) return
+    const url = buildLocalImageUrl(normalizedPath, token)
+    if (seen.has(url)) return
+    seen.add(url)
+    images.push({ url, alt: alt || 'image', index: images.length })
+  }
+
+  for (const match of (source || '').matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)) {
+    addImage(match[1] || '', match[2] || '')
+  }
+  for (const match of (source || '').matchAll(/\[Attached image:\s*([^\]]+?)\]/g)) {
+    addImage('Attached image', match[1] || '')
+  }
+  return images
+}
+
+function messagePreviewUrls(source: string): string[] {
+  return messageImages(source).map((image) => image.url)
+}
+
+function messageText(source: string): string {
+  return (source || '')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
+    .replace(/\[Attached image:\s*([^\]]+?)\]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function itemImages(item: TurnItem): MessageImage[] {
+  return messageImages(item.body || '')
+}
+
+function itemPreviewUrls(item: TurnItem): string[] {
+  return messagePreviewUrls(item.body || '')
+}
+
+function itemText(item: TurnItem): string {
+  const text = messageText(item.body || '')
+  if (item.type !== 'userMessage') return text
+  return stripBrowserPromptScaffold(text)
+}
+
+function stripBrowserPromptScaffold(source: string): string {
+  const marker = '## My request for Codex:'
+  const markerIndex = source.indexOf(marker)
+  if (markerIndex >= 0) {
+    return source.slice(markerIndex + marker.length).trim()
+  }
+  return source
+    .replace(/^# In app browser:\s*(?:\n- .*)+\n*/i, '')
+    .trim()
 }
 
 function rewriteMarkdownImagePaths(source: string): string {
@@ -1761,6 +1849,41 @@ onUnmounted(() => {
   color: #fff;
 }
 
+.image-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+}
+
+.image-strip:last-child {
+  margin-bottom: 0;
+}
+
+.message-thumb {
+  width: 78px;
+  height: 78px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(15, 46, 106, 0.08);
+  cursor: zoom-in;
+}
+
+.bubble-user .message-thumb {
+  border-color: rgba(255, 255, 255, 0.56);
+  box-shadow: 0 5px 14px rgba(15, 46, 106, 0.18);
+}
+
+.message-thumb :deep(img) {
+  display: block;
+}
+
 .message-body.is-code pre,
 .diff-block,
 .message-aux pre {
@@ -2000,15 +2123,9 @@ onUnmounted(() => {
 }
 
 .markdown-body :deep(img) {
-  display: block;
-  max-width: min(100%, 520px);
-  width: auto;
-  height: auto;
-  margin: 12px 0 6px;
-  border-radius: 14px;
-  border: 1px solid rgba(216, 230, 251, 0.95);
-  box-shadow: 0 10px 24px rgba(15, 46, 106, 0.08);
-  background: #fff;
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 10px;
 }
 
 .typing-cursor {
