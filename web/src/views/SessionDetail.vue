@@ -166,6 +166,16 @@
             <span>正在加载…</span>
           </div>
         </div>
+        <transition name="new-message-pill">
+          <button
+            v-if="showNewMessageHint"
+            type="button"
+            class="new-message-pill"
+            @click="jumpToLatest"
+          >
+            有新消息，回到最新
+          </button>
+        </transition>
       </div>
     </div>
 
@@ -218,6 +228,7 @@ const metaCollapsed = ref(true)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
+const pendingNewMessages = ref(0)
 
 const markdownOptions = {
   html: false,
@@ -239,6 +250,7 @@ const summary = computed<SessionSummary | undefined>(() => {
 const sessionApprovals = computed(() => app.filteredApprovals.filter((a) => a.threadId === sessionId))
 const orderedTurns = computed(() => detail.value?.turns || [])
 const latestTurn = computed(() => orderedTurns.value[orderedTurns.value.length - 1])
+const showNewMessageHint = computed(() => pendingNewMessages.value > 0 && !followLiveOutput.value)
 const runningTurn = computed(() => {
   for (let i = orderedTurns.value.length - 1; i >= 0; i -= 1) {
     const turn = orderedTurns.value[i]
@@ -315,13 +327,21 @@ function scrollChatToBottom(force = false) {
 
 function jumpToLatest() {
   followLiveOutput.value = true
+  pendingNewMessages.value = 0
   scrollChatToBottom(true)
 }
 
-function onChatScroll() {
+async function onChatScroll() {
   const el = chatAreaRef.value
   if (!el) return
-  followLiveOutput.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  followLiveOutput.value = nearBottom
+  if (nearBottom) {
+    pendingNewMessages.value = 0
+  }
+  if (el.scrollTop < 40 && detail.value?.hasMoreHistory && !loadingHistory.value) {
+    await loadOlderTurns()
+  }
 }
 
 watch(orderedTurns, (next, prev) => {
@@ -330,6 +350,9 @@ watch(orderedTurns, (next, prev) => {
   const latestChanged = !prevLast || !nextLast || prevLast.id !== nextLast.id || JSON.stringify(prevLast.items) !== JSON.stringify(nextLast.items)
   if (latestChanged && followLiveOutput.value) {
     scrollChatToBottom(true)
+    pendingNewMessages.value = 0
+  } else if (latestChanged) {
+    pendingNewMessages.value += 1
   }
 }, { deep: true })
 
@@ -716,6 +739,7 @@ onUnmounted(() => {
   border: 1px solid #dce8f8;
   border-radius: 20px 20px 0 0;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-toolbar {
@@ -753,6 +777,10 @@ onUnmounted(() => {
 .empty-hint {
   display: flex;
   justify-content: center;
+}
+
+.history-load-row {
+  min-height: 24px;
 }
 
 .empty-hint {
@@ -960,6 +988,33 @@ onUnmounted(() => {
   animation: blink-cursor 0.8s step-end infinite;
 }
 
+.new-message-pill {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 4;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #2f6fec;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(47, 111, 236, 0.28);
+  cursor: pointer;
+}
+
+.new-message-pill-enter-active,
+.new-message-pill-leave-active {
+  transition: all 0.2s ease;
+}
+
+.new-message-pill-enter-from,
+.new-message-pill-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 @keyframes blink-cursor {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
@@ -1010,6 +1065,11 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .chat-area {
   padding: 10px 12px 14px;
+}
+
+.session-detail-page.is-mobile .new-message-pill {
+  right: 12px;
+  bottom: 12px;
 }
 
 .session-detail-page.is-mobile .message-bubble,
