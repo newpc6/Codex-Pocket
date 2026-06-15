@@ -90,36 +90,51 @@
       </div>
     </el-card>
 
-    <template v-for="(group, key) in visibleGroups" :key="key">
-      <div style="margin-top: 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 16px; font-weight: 700; color: var(--cf-text-heavy)">{{ groupTitles[key as keyof typeof groupTitles] }}</span>
-        <el-tag size="small" type="info">{{ group.length }}</el-tag>
-      </div>
-      <p style="font-size: 13px; color: var(--cf-text-secondary); margin-bottom: 10px">{{ groupHelpers[key as keyof typeof groupHelpers] }}</p>
-      <div v-for="session in group" :key="session.id" class="session-item" @click="goDetail(session.id)">
-        <div class="session-header">
-          <div class="session-name">{{ displayName(session) }}</div>
-          <el-tag :type="statusTagType(session.status, session.ended)" size="small">
-            {{ statusLabel(session.status, session.ended, session.activeFlags?.length > 0) }}
-          </el-tag>
+    <div v-if="folderGroups.length > 0" class="folder-session-list">
+      <section v-for="group in folderGroups" :key="group.key" class="folder-group">
+        <div class="folder-heading">
+          <div class="folder-title-block">
+            <div class="folder-title-row">
+              <el-icon><FolderOpened /></el-icon>
+              <span class="folder-title">{{ group.name }}</span>
+              <el-tag size="small" type="info" round>{{ group.sessions.length }}</el-tag>
+            </div>
+            <div class="folder-path">{{ group.path }}</div>
+          </div>
+          <div class="folder-stats">
+            <span v-if="group.activeCount > 0" class="folder-stat is-active">{{ group.activeCount }} 运行中</span>
+            <span v-if="group.managedCount > 0" class="folder-stat">{{ group.managedCount }} 已接管</span>
+          </div>
         </div>
-        <div class="session-cwd">{{ session.cwd }}</div>
-        <div v-if="session.preview" class="session-preview">{{ truncateText(session.preview) }}</div>
-        <div class="session-tags">
-          <el-tag size="small" :type="session.loaded ? 'success' : ''">
-            {{ session.loaded ? '已接管' : '未接管' }}
-          </el-tag>
-          <el-tag size="small" type="info">{{ session.source }}</el-tag>
-          <el-tag v-if="session.branch" size="small">{{ session.branch }}</el-tag>
-          <el-tag size="small" :type="lifecycleTagType(session.lifecycleStage)">
-            {{ lifecycleLabel(session.lifecycleStage) }}
-          </el-tag>
+
+        <div class="folder-session-items">
+          <button
+            v-for="session in group.sessions"
+            :key="session.id"
+            type="button"
+            class="session-row"
+            :class="{ 'is-running': isSessionActive(session), 'is-managed': session.loaded }"
+            @click="goDetail(session.id)"
+          >
+            <span class="session-state-dot"></span>
+            <span class="session-row-main">
+              <span class="session-row-title">{{ displayName(session) }}</span>
+              <span v-if="session.preview" class="session-row-preview">{{ truncateText(session.preview, 92) }}</span>
+            </span>
+            <span class="session-row-tags">
+              <el-tag v-if="session.branch" size="small" effect="plain">{{ session.branch }}</el-tag>
+              <el-tag size="small" :type="lifecycleTagType(session.lifecycleStage)" effect="light">
+                {{ lifecycleLabel(session.lifecycleStage) }}
+              </el-tag>
+              <el-tag :type="statusTagType(session.status, session.ended)" size="small" effect="light">
+                {{ statusLabel(session.status, session.ended, session.activeFlags?.length > 0) }}
+              </el-tag>
+            </span>
+            <span class="session-row-time">{{ formatTimestamp(session.updatedAt) }}</span>
+          </button>
         </div>
-        <div style="font-size: 11px; color: var(--cf-text-secondary); margin-top: 8px">
-          更新 {{ formatTimestamp(session.updatedAt) }}
-        </div>
-      </div>
-    </template>
+      </section>
+    </div>
 
     <el-empty v-if="filteredAndSearchedSessions.length === 0 && !app.loading" description="没有匹配的会话" />
 
@@ -183,22 +198,6 @@ const currentAgentName = computed(() => {
   return a?.name || 'Codex'
 })
 
-const groupTitles: Record<string, string> = {
-  managed: '已接管',
-  ended: '已结束',
-  runtimeAvailable: '待接管',
-  discovered: '已发现',
-  historyOnly: '历史会话',
-}
-
-const groupHelpers: Record<string, string> = {
-  managed: '这些会话已经由 CodexFlow 后台托管，可以直接继续操作。',
-  ended: '这些会话已经从 CodexFlow 托管态退出。需要继续时，再重新接管。',
-  runtimeAvailable: '这些会话当前未接管，但运行时仍可继续接管。',
-  discovered: '这些会话已被发现，但尚未接管。点击可查看详情，接管后即可继续执行。',
-  historyOnly: '这些只是已发现的真实会话记录。先接管，才可以继续执行。',
-}
-
 const filteredAndSearchedSessions = computed(() => {
   let sessions = app.filteredSessions
   if (searchQuery.value.trim()) {
@@ -225,27 +224,41 @@ const filteredAndSearchedSessions = computed(() => {
   return sessions
 })
 
-const visibleGroups = computed(() => {
-  const sessions = filteredAndSearchedSessions.value
-  const groups: Record<string, SessionSummary[]> = {
-    managed: [],
-    ended: [],
-    runtimeAvailable: [],
-    discovered: [],
-    historyOnly: [],
+const folderGroups = computed(() => {
+  const map = new Map<string, {
+    key: string
+    path: string
+    name: string
+    sessions: SessionSummary[]
+    activeCount: number
+    managedCount: number
+    latestUpdatedAt: number
+  }>()
+
+  for (const session of filteredAndSearchedSessions.value) {
+    const key = normalizeFolderKey(session.cwd)
+    const existing = map.get(key) || {
+      key,
+      path: session.cwd || '未知目录',
+      name: folderName(session.cwd),
+      sessions: [],
+      activeCount: 0,
+      managedCount: 0,
+      latestUpdatedAt: 0,
+    }
+    existing.sessions.push(session)
+    if (isSessionActive(session)) existing.activeCount += 1
+    if (session.loaded) existing.managedCount += 1
+    existing.latestUpdatedAt = Math.max(existing.latestUpdatedAt, session.updatedAt || 0)
+    map.set(key, existing)
   }
-  for (const s of sessions) {
-    const key = s.lifecycleStage === 'runtime_available' ? 'runtimeAvailable'
-      : s.lifecycleStage === 'history_only' ? 'historyOnly'
-      : s.lifecycleStage
-    if (groups[key]) groups[key].push(s)
-    else groups.discovered.push(s)
-  }
-  const result: Record<string, SessionSummary[]> = {}
-  for (const [key, val] of Object.entries(groups)) {
-    if (val.length > 0) result[key] = val
-  }
-  return result
+
+  return [...map.values()]
+    .map((group) => ({
+      ...group,
+      sessions: [...group.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
+    }))
+    .sort((a, b) => (b.activeCount - a.activeCount) || (b.latestUpdatedAt - a.latestUpdatedAt))
 })
 
 function displayName(session: SessionSummary) {
@@ -258,6 +271,19 @@ function isSessionActive(session: SessionSummary) {
     || session.status === 'inProgress'
     || session.lastTurnStatus === 'inProgress'
     || (session.activeFlags?.length || 0) > 0
+}
+
+function normalizeFolderKey(cwd: string) {
+  const trimmed = (cwd || '').trim()
+  if (!trimmed) return 'unknown'
+  return trimmed.replace(/[\\/]+$/, '').toLowerCase()
+}
+
+function folderName(cwd: string) {
+  const trimmed = (cwd || '').trim().replace(/[\\/]+$/, '')
+  if (!trimmed) return '未知目录'
+  const parts = trimmed.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] || trimmed
 }
 
 function onAgentSwitch(id: string) {
@@ -327,6 +353,168 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.folder-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.folder-group {
+  border: 1px solid var(--cf-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--cf-shadow-sm);
+  overflow: hidden;
+}
+
+.folder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cf-border-light);
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%);
+}
+
+.folder-title-block {
+  min-width: 0;
+}
+
+.folder-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--cf-text-heavy);
+  font-weight: 700;
+}
+
+.folder-title-row .el-icon {
+  color: var(--cf-text-secondary);
+}
+
+.folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-path {
+  margin-top: 3px;
+  color: var(--cf-text-secondary);
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+}
+
+.folder-stat {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef4fb;
+}
+
+.folder-stat.is-active {
+  color: #b45309;
+  background: #fff3dc;
+}
+
+.folder-session-items {
+  padding: 6px;
+}
+
+.session-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.session-row:hover {
+  background: #eef6ff;
+}
+
+.session-row.is-running {
+  background: #fff8eb;
+}
+
+.session-row.is-running:hover {
+  background: #fff1d7;
+}
+
+.session-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c8d3e1;
+}
+
+.session-row.is-managed .session-state-dot {
+  background: var(--cf-success);
+}
+
+.session-row.is-running .session-state-dot {
+  background: var(--cf-warning);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+}
+
+.session-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.session-row-title {
+  color: var(--cf-text-heavy);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row-preview {
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.session-row-time {
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .sse-badge {
   display: inline-flex;
   align-items: center;
@@ -375,6 +563,29 @@ onUnmounted(() => {
 
   .cwd-field {
     grid-template-columns: 1fr;
+  }
+
+  .folder-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .folder-stats {
+    flex-wrap: wrap;
+  }
+
+  .session-row {
+    grid-template-columns: 8px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .session-row-tags,
+  .session-row-time {
+    grid-column: 2;
+  }
+
+  .session-row-tags {
+    flex-wrap: wrap;
   }
 }
 </style>

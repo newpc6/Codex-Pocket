@@ -150,6 +150,10 @@ export const useAppStore = defineStore('app', () => {
   const activeSessionIds = ref<Set<string>>(new Set())
   const sessionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const activeSessionPollers = new Map<string, ReturnType<typeof setInterval>>()
+  const sessionLoadInFlight = new Map<string, Promise<void>>()
+  let dashboardRefreshInFlight: Promise<void> | null = null
+  let dashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  let lastDashboardRefreshAt = 0
   let sseHandlersBound = false
 
   const filteredSessions = computed(() => {
@@ -174,17 +178,31 @@ export const useAppStore = defineStore('app', () => {
 
   const isAgentOnline = computed(() => dashboard.value.agent.connected)
 
-  async function refreshDashboard() {
+  async function refreshDashboard(options?: { force?: boolean }) {
+    const now = Date.now()
+    if (!options?.force && dashboardRefreshInFlight) {
+      return dashboardRefreshInFlight
+    }
+    if (!options?.force && now - lastDashboardRefreshAt < 500) {
+      return dashboardRefreshInFlight || Promise.resolve()
+    }
+
     loading.value = true
     error.value = ''
-    try {
+    dashboardRefreshInFlight = (async () => {
       const res = await api.get<DashboardData>('/dashboard')
       dashboard.value = res.data
       syncSelectedAgent(res.data)
+      lastDashboardRefreshAt = Date.now()
+    })()
+
+    try {
+      await dashboardRefreshInFlight
     } catch (e: any) {
       error.value = e.response?.data?.error || e.message
     } finally {
       loading.value = false
+      dashboardRefreshInFlight = null
     }
   }
 
@@ -197,37 +215,56 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function loadSession(id: string, options?: { offset?: number; limit?: number; appendHistory?: boolean }) {
-    try {
-      const params: Record<string, number> = {}
-      if (typeof options?.offset === 'number') params.offset = options.offset
-      if (typeof options?.limit === 'number') params.limit = options.limit
-      const res = await api.get<SessionDetail>(`/sessions/${id}`, { params })
-      if (options?.appendHistory && sessionDetails.value[id]) {
-        const existing = sessionDetails.value[id]
-        const mergedTurns = [...res.data.turns, ...existing.turns]
-        sessionDetails.value[id] = {
-          ...res.data,
-          turns: mergedTurns,
-        }
-        return
-      }
-      if (!options?.appendHistory && sessionDetails.value[id]) {
-        const existing = sessionDetails.value[id]
-        const keepCount = res.data.offset - existing.offset
-        if (keepCount > 0 && existing.turns.length >= keepCount) {
+    const canReuse = !options?.appendHistory && typeof options?.offset !== 'number' && typeof options?.limit !== 'number'
+    if (canReuse) {
+      const pending = sessionLoadInFlight.get(id)
+      if (pending) return pending
+    }
+
+    const run = async () => {
+      try {
+        const params: Record<string, number> = {}
+        if (typeof options?.offset === 'number') params.offset = options.offset
+        if (typeof options?.limit === 'number') params.limit = options.limit
+        const res = await api.get<SessionDetail>(`/sessions/${id}`, { params })
+        if (options?.appendHistory && sessionDetails.value[id]) {
+          const existing = sessionDetails.value[id]
+          const mergedTurns = [...res.data.turns, ...existing.turns]
           sessionDetails.value[id] = {
             ...res.data,
-            turns: [...existing.turns.slice(0, keepCount), ...res.data.turns],
-            offset: existing.offset,
-            hasMoreHistory: existing.offset > 0,
+            turns: mergedTurns,
           }
           return
         }
+        if (!options?.appendHistory && sessionDetails.value[id]) {
+          const existing = sessionDetails.value[id]
+          const keepCount = res.data.offset - existing.offset
+          if (keepCount > 0 && existing.turns.length >= keepCount) {
+            sessionDetails.value[id] = {
+              ...res.data,
+              turns: [...existing.turns.slice(0, keepCount), ...res.data.turns],
+              offset: existing.offset,
+              hasMoreHistory: existing.offset > 0,
+            }
+            return
+          }
+        }
+        sessionDetails.value[id] = res.data
+      } catch (e: any) {
+        error.value = e.response?.data?.error || e.message
       }
-      sessionDetails.value[id] = res.data
-    } catch (e: any) {
-      error.value = e.response?.data?.error || e.message
     }
+
+    const promise = run()
+    if (canReuse) {
+      sessionLoadInFlight.set(id, promise)
+      promise.finally(() => {
+        if (sessionLoadInFlight.get(id) === promise) {
+          sessionLoadInFlight.delete(id)
+        }
+      })
+    }
+    return promise
   }
 
   function scheduleSessionLoad(id: string, delay = 120) {
@@ -238,6 +275,14 @@ export const useAppStore = defineStore('app', () => {
       sessionRefreshTimers.delete(id)
       await loadSession(id)
     }, delay))
+  }
+
+  function scheduleDashboardRefresh(delay = 500) {
+    if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer)
+    dashboardRefreshTimer = setTimeout(() => {
+      dashboardRefreshTimer = null
+      void refreshDashboard()
+    }, delay)
   }
 
   function ensureSessionTurn(detail: SessionDetail, turnId: string): Turn {
@@ -470,7 +515,7 @@ export const useAppStore = defineStore('app', () => {
         if (method === 'agentMessage/delta' || method === 'item/agentMessage/delta') {
           applyAgentMessageDelta(threadId, params)
         } else {
-          scheduleSessionLoad(threadId, 80)
+          scheduleSessionLoad(threadId, 250)
         }
       }
 
@@ -481,34 +526,34 @@ export const useAppStore = defineStore('app', () => {
         'thread/goal/updated', 'thread/goal/cleared',
         'item/started', 'item/completed',
       ].includes(method)) {
-        await refreshDashboard()
+        scheduleDashboardRefresh(350)
       }
     })
 
     // Approval events
     sseService.on('approval.created', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     sseService.on('approval.resolved', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     // Session lifecycle events
     sseService.on('session.created', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     sseService.on('session.resumed', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     sseService.on('session.ended', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     sseService.on('session.archived', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     // Turn events
@@ -517,7 +562,7 @@ export const useAppStore = defineStore('app', () => {
       if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     sseService.on('turn.steered', async (event: SSEEvent) => {
@@ -532,12 +577,12 @@ export const useAppStore = defineStore('app', () => {
       if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
-      await refreshDashboard()
+      scheduleDashboardRefresh(300)
     })
 
     // Sessions refreshed
     sseService.on('sessions.refreshed', async () => {
-      await refreshDashboard()
+      scheduleDashboardRefresh(500)
     })
   }
 
@@ -545,6 +590,10 @@ export const useAppStore = defineStore('app', () => {
     sseService.disconnect()
     for (const timer of sessionRefreshTimers.values()) clearTimeout(timer)
     sessionRefreshTimers.clear()
+    if (dashboardRefreshTimer) {
+      clearTimeout(dashboardRefreshTimer)
+      dashboardRefreshTimer = null
+    }
     for (const poller of activeSessionPollers.values()) clearInterval(poller)
     activeSessionPollers.clear()
   }
@@ -554,6 +603,7 @@ export const useAppStore = defineStore('app', () => {
     if (activeSessionPollers.has(id)) return
     const poller = setInterval(async () => {
       if (!activeSessionIds.value.has(id)) return
+      if (document.visibilityState !== 'visible') return
       const summary = dashboard.value.sessions.find((s) => s.id === id)
       const knownDetail = sessionDetails.value[id]
       const aggressive = !!(summary?.loaded
@@ -562,11 +612,12 @@ export const useAppStore = defineStore('app', () => {
         || summary?.lifecycleStage === 'history_only'
         || knownDetail?.summary?.lastTurnStatus === 'inProgress')
       if (!aggressive && !knownDetail) return
+      if (sseConnected.value) return
       await loadSession(id)
       if (aggressive) {
         await refreshDashboard()
       }
-    }, 600)
+    }, 2500)
     activeSessionPollers.set(id, poller)
   }
 
