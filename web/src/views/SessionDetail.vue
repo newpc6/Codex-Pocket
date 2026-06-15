@@ -54,12 +54,8 @@
           </div>
 
           <p v-if="summary.preview" class="hero-preview">
-            {{ metaCollapsed ? truncateText(summary.preview, 68) : summary.preview }}
+            {{ truncateText(summary.preview, 72) }}
           </p>
-
-          <button v-if="summary.preview" type="button" class="hero-toggle" @click="metaCollapsed = !metaCollapsed">
-            {{ metaCollapsed ? '展开说明' : '收起说明' }}
-          </button>
         </div>
 
         <div class="hero-status-card">
@@ -294,7 +290,6 @@ const promptText = ref('')
 const submitting = ref(false)
 const resuming = ref(false)
 const detaching = ref(false)
-const metaCollapsed = ref(true)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
@@ -811,17 +806,6 @@ onUnmounted(() => {
   line-height: 1.45;
   color: var(--cf-text-secondary);
   max-width: 780px;
-}
-
-.hero-toggle {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  color: var(--cf-primary-dark);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
 }
 
 .hero-status-card {

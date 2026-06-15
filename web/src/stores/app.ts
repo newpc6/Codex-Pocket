@@ -91,26 +91,33 @@ export interface DashboardData {
   approvals: ApprovalRequest[]
 }
 
+function parseNotificationParams(event: SSEEvent): Record<string, any> {
+  const payload = event.payload || {}
+  const params = payload.params
+
+  if (typeof params === 'string') {
+    try {
+      const decoded = JSON.parse(params)
+      return decoded && typeof decoded === 'object' ? decoded : {}
+    } catch {
+      return {}
+    }
+  }
+
+  if (params && typeof params === 'object') {
+    return params as Record<string, any>
+  }
+
+  return {}
+}
+
 function parseNotificationThreadId(event: SSEEvent): string {
   const payload = event.payload || {}
   const directThreadId = typeof payload.threadId === 'string' ? payload.threadId : ''
   if (directThreadId) return directThreadId
 
-  const params = payload.params
-  if (typeof params === 'string') {
-    try {
-      const decoded = JSON.parse(params)
-      return typeof decoded?.threadId === 'string' ? decoded.threadId : ''
-    } catch {
-      return ''
-    }
-  }
-
-  if (params && typeof params === 'object') {
-    return typeof params.threadId === 'string' ? params.threadId : ''
-  }
-
-  return ''
+  const params = parseNotificationParams(event)
+  return typeof params.threadId === 'string' ? params.threadId : ''
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -224,6 +231,59 @@ export const useAppStore = defineStore('app', () => {
     }, delay))
   }
 
+  function ensureSessionTurn(detail: SessionDetail, turnId: string): Turn {
+    let turn = detail.turns.find((entry) => entry.id === turnId)
+    if (turn) return turn
+
+    turn = {
+      id: turnId,
+      status: 'inProgress',
+      startedAt: Date.now(),
+      durationMs: 0,
+      planExplanation: '',
+      plan: [],
+      diff: '',
+      error: '',
+      items: [],
+    }
+    detail.turns.push(turn)
+    detail.totalTurns = Math.max(detail.totalTurns || 0, detail.turns.length)
+    return turn
+  }
+
+  function applyAgentMessageDelta(threadId: string, params: Record<string, any>) {
+    const detail = sessionDetails.value[threadId]
+    if (!detail) return
+
+    const turnId = typeof params.turnId === 'string' ? params.turnId : ''
+    const itemId = typeof params.itemId === 'string' ? params.itemId : ''
+    const delta = typeof params.delta === 'string' ? params.delta : ''
+    if (!turnId || !itemId || !delta) return
+
+    const turn = ensureSessionTurn(detail, turnId)
+    turn.status = 'inProgress'
+    detail.summary.lastTurnId = turnId
+    detail.summary.lastTurnStatus = 'inProgress'
+
+    let item = turn.items.find((entry) => entry.id === itemId)
+    if (!item) {
+      item = {
+        id: itemId,
+        type: 'agentMessage',
+        title: 'Agent',
+        body: '',
+        status: '',
+        auxiliary: '',
+      }
+      turn.items.push(item)
+    }
+
+    if (item.type !== 'agentMessage') {
+      item.type = 'agentMessage'
+    }
+    item.body = `${item.body || ''}${delta}`
+  }
+
   async function resumeSession(id: string) {
     const res = await api.post(`/sessions/${id}/resume`)
     await refreshDashboard()
@@ -310,11 +370,15 @@ export const useAppStore = defineStore('app', () => {
       const method = event.payload?.method as string
       if (!method) return
 
-      // Refresh session detail if it's a turn-related notification for an active session
       const threadId = parseNotificationThreadId(event)
       if (threadId && activeSessionIds.value.has(threadId)) {
-        const delay = method === 'agentMessage/delta' ? 25 : 80
-        scheduleSessionLoad(threadId, delay)
+        const params = parseNotificationParams(event)
+        if (method === 'agentMessage/delta') {
+          applyAgentMessageDelta(threadId, params)
+          scheduleSessionLoad(threadId, 320)
+        } else {
+          scheduleSessionLoad(threadId, 80)
+        }
       }
 
       // Always refresh dashboard on significant events
