@@ -385,7 +385,11 @@ function isStructuredToolItem(item: TurnItem): boolean {
 }
 
 function toolDisplayName(item: TurnItem): string {
-  if (item.type === 'commandExecution') return item.title || 'shell_command'
+  if (item.type === 'commandExecution') {
+    const toolName = (item.title || 'shell_command').trim() || 'shell_command'
+    const command = (item.body || '').trim()
+    return command ? `${toolName}: ${command}` : toolName
+  }
   const raw = item.title || item.type
   return raw.trim() || item.type
 }
