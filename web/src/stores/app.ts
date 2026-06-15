@@ -91,6 +91,28 @@ export interface DashboardData {
   approvals: ApprovalRequest[]
 }
 
+function parseNotificationThreadId(event: SSEEvent): string {
+  const payload = event.payload || {}
+  const directThreadId = typeof payload.threadId === 'string' ? payload.threadId : ''
+  if (directThreadId) return directThreadId
+
+  const params = payload.params
+  if (typeof params === 'string') {
+    try {
+      const decoded = JSON.parse(params)
+      return typeof decoded?.threadId === 'string' ? decoded.threadId : ''
+    } catch {
+      return ''
+    }
+  }
+
+  if (params && typeof params === 'object') {
+    return typeof params.threadId === 'string' ? params.threadId : ''
+  }
+
+  return ''
+}
+
 export const useAppStore = defineStore('app', () => {
   const dashboard = ref<DashboardData>({
     agent: { connected: false, startedAt: '', listenAddr: '', codexBinaryPath: '' },
@@ -289,9 +311,9 @@ export const useAppStore = defineStore('app', () => {
       if (!method) return
 
       // Refresh session detail if it's a turn-related notification for an active session
-      const threadId = event.payload?.params?.threadId as string
+      const threadId = parseNotificationThreadId(event)
       if (threadId && activeSessionIds.value.has(threadId)) {
-        const delay = method === 'agentMessage/delta' ? 80 : 120
+        const delay = method === 'agentMessage/delta' ? 25 : 80
         scheduleSessionLoad(threadId, delay)
       }
 
@@ -386,7 +408,7 @@ export const useAppStore = defineStore('app', () => {
       if (aggressive) {
         await refreshDashboard()
       }
-    }, 1500)
+    }, 600)
     activeSessionPollers.set(id, poller)
   }
 

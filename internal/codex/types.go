@@ -245,6 +245,11 @@ func FirstUserText(items []map[string]any) string {
 					parts = append(parts, text)
 				}
 			}
+			if itemMap["type"] == "localImage" {
+				if path, ok := itemMap["path"].(string); ok && path != "" {
+					parts = append(parts, fmt.Sprintf("[Attached image: %s]", path))
+				}
+			}
 		}
 		return strings.Join(parts, "\n")
 	}
