@@ -25,6 +25,10 @@
                 <el-dropdown-item v-if="summary.loaded && !summary.ended" command="end">
                   <el-icon><SwitchButton /></el-icon> 结束会话
                 </el-dropdown-item>
+                <el-dropdown-item command="rename">重命名</el-dropdown-item>
+                <el-dropdown-item v-if="summary.agentId === 'codex'" command="fork">分支会话</el-dropdown-item>
+                <el-dropdown-item v-if="summary.agentId === 'codex'" command="compact">压缩上下文</el-dropdown-item>
+                <el-dropdown-item v-if="summary.agentId === 'codex'" command="rollback">回滚最近一轮</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -282,7 +286,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore, type ApprovalRequest, type SessionSummary, type Turn, type TurnItem } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton, Loading } from '@element-plus/icons-vue'
@@ -293,6 +297,7 @@ import {
 } from '../utils/helpers'
 
 const route = useRoute()
+const router = useRouter()
 const app = useAppStore()
 const sessionId = route.params.id as string
 const promptText = ref('')
@@ -550,6 +555,10 @@ function onAction(cmd: string) {
   if (cmd === 'resume') handleResume()
   else if (cmd === 'detach') handleDetach()
   else if (cmd === 'end') handleEnd()
+  else if (cmd === 'rename') handleRename()
+  else if (cmd === 'fork') handleFork()
+  else if (cmd === 'compact') handleCompact()
+  else if (cmd === 'rollback') handleRollback()
 }
 
 async function handleResume() {
@@ -612,6 +621,62 @@ async function handleEnd() {
     await ElMessageBox.confirm('确定要结束这个会话吗？', '确认')
     await app.endSession(sessionId)
     ElMessage.success('会话已结束')
+  } catch { /* cancelled */ }
+}
+
+async function handleRename() {
+  const currentName = summary.value ? displayName(summary.value) : ''
+  try {
+    const { value } = await ElMessageBox.prompt('给这个会话起一个更容易识别的名字', '重命名会话', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: currentName,
+      inputPattern: /\S+/,
+      inputErrorMessage: '名称不能为空',
+    })
+    const name = String(value || '').trim()
+    if (!name) return
+    await app.renameSession(sessionId, name)
+    ElMessage.success('会话已重命名')
+  } catch { /* cancelled */ }
+}
+
+async function handleFork() {
+  try {
+    await ElMessageBox.confirm('会基于当前历史创建一个新的 Codex 会话分支。', '分支会话', {
+      confirmButtonText: '创建分支',
+      cancelButtonText: '取消',
+      type: 'info',
+    })
+    const forked = await app.forkSession(sessionId)
+    ElMessage.success('分支会话已创建')
+    router.push(`/session/${forked.id}`)
+  } catch { /* cancelled */ }
+}
+
+async function handleCompact() {
+  try {
+    await ElMessageBox.confirm('Codex 会开始压缩当前会话上下文，过程会作为新的消息流显示。', '压缩上下文', {
+      confirmButtonText: '开始压缩',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await app.compactSession(sessionId)
+    ElMessage.success('已开始压缩上下文')
+  } catch { /* cancelled */ }
+}
+
+async function handleRollback() {
+  try {
+    await ElMessageBox.confirm('会从 Codex 上下文中移除最近 1 轮，并写入回滚记录。这个操作无法在 CodexFlow 内撤销。', '回滚最近一轮', {
+      confirmButtonText: '回滚',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await app.rollbackSession(sessionId, 1)
+    ElMessage.success('已回滚最近一轮')
+    await nextTick()
+    scrollChatToBottom(true)
   } catch { /* cancelled */ }
 }
 

@@ -185,6 +185,18 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 			a.store.UpsertThread(record.Thread)
 		}
 	}
+	if offset < 0 {
+		if turns, ok := a.tryLoadCodexTurnsPage(ctx, threadID, limit); ok && len(turns) > 0 {
+			if latest, latestOK := a.store.SnapshotSession(threadID); latestOK {
+				record = latest
+			}
+			if strings.TrimSpace(record.Thread.ID) == "" {
+				record.Thread.ID = threadID
+			}
+			record.Thread.Turns = mergeCodexTurns(record.Thread.Turns, turns)
+			a.store.UpsertThread(record.Thread)
+		}
+	}
 
 	var response codex.ThreadReadResponse
 	if err := a.client.Call(ctx, "thread/read", map[string]any{
@@ -215,6 +227,35 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 	pendingCount := pendingCountForThread(a.store.SnapshotPending(), threadID)
 
 	return paginateSessionDetail(toSessionDetail(record, pendingCount), offset, limit), nil
+}
+
+func (a *Agent) tryLoadCodexTurnsPage(ctx context.Context, threadID string, limit int) ([]codex.Turn, bool) {
+	if strings.TrimSpace(threadID) == "" {
+		return nil, false
+	}
+	if limit <= 0 {
+		limit = maxSessionTurnLimit
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	var response codex.ThreadTurnsListResponse
+	if err := a.client.Call(ctx, "thread/turns/list", map[string]any{
+		"threadId":      threadID,
+		"limit":         limit,
+		"sortDirection": "desc",
+		"itemsView":     "full",
+	}, &response); err != nil {
+		a.logger.Debug("thread turns list unavailable", "threadId", threadID, "error", err)
+		return nil, false
+	}
+	if len(response.Data) == 0 {
+		return nil, true
+	}
+	turns := cloneCodexTurns(response.Data)
+	slices.Reverse(turns)
+	return turns, true
 }
 
 func paginateSessionDetail(detail SessionDetail, offset, limit int) SessionDetail {
@@ -765,6 +806,95 @@ func (a *Agent) ArchiveSession(ctx context.Context, threadID string) error {
 		"threadId": threadID,
 	})
 	return nil
+}
+
+func (a *Agent) RenameSession(ctx context.Context, threadID, name string) (SessionSummary, error) {
+	if isClaudeThreadID(threadID) {
+		return SessionSummary{}, errors.New("rename is not supported for claude sessions")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return SessionSummary{}, errors.New("session name is required")
+	}
+
+	var response codex.ThreadNameSetResponse
+	if err := a.client.Call(ctx, "thread/name/set", map[string]any{
+		"threadId": threadID,
+		"name":     name,
+	}, &response); err != nil {
+		return SessionSummary{}, err
+	}
+
+	a.store.UpsertThread(response.Thread)
+	_ = a.Refresh(ctx)
+	record, _ := a.store.SnapshotSession(threadID)
+	summary := toSessionSummary(record, pendingCountForThread(a.store.SnapshotPending(), threadID))
+	a.broker.Publish("session.renamed", summary)
+	return summary, nil
+}
+
+func (a *Agent) ForkSession(ctx context.Context, threadID string) (SessionSummary, error) {
+	if isClaudeThreadID(threadID) {
+		return SessionSummary{}, errors.New("fork is not supported for claude sessions")
+	}
+
+	var response codex.ThreadForkResponse
+	if err := a.client.Call(ctx, "thread/fork", map[string]any{
+		"threadId": threadID,
+	}, &response); err != nil {
+		return SessionSummary{}, err
+	}
+
+	a.store.UpsertThread(response.Thread)
+	a.store.SetSessionEnded(response.Thread.ID, false)
+	_ = a.Refresh(ctx)
+	record, _ := a.store.SnapshotSession(response.Thread.ID)
+	summary := toSessionSummary(record, pendingCountForThread(a.store.SnapshotPending(), response.Thread.ID))
+	a.broker.Publish("session.forked", summary)
+	return summary, nil
+}
+
+func (a *Agent) CompactSession(ctx context.Context, threadID string) error {
+	if isClaudeThreadID(threadID) {
+		return errors.New("compact is not supported for claude sessions")
+	}
+	if err := a.client.Call(ctx, "thread/compact/start", map[string]any{
+		"threadId": threadID,
+	}, nil); err != nil {
+		return err
+	}
+	a.broker.Publish("session.compacting", map[string]string{"threadId": threadID})
+	return nil
+}
+
+func (a *Agent) RollbackSession(ctx context.Context, threadID string, numTurns int) (SessionDetail, error) {
+	if isClaudeThreadID(threadID) {
+		return SessionDetail{}, errors.New("rollback is not supported for claude sessions")
+	}
+	if numTurns <= 0 {
+		return SessionDetail{}, errors.New("numTurns must be greater than zero")
+	}
+	if numTurns > 10 {
+		return SessionDetail{}, errors.New("numTurns must be 10 or less")
+	}
+
+	var response codex.ThreadRollbackResponse
+	if err := a.client.Call(ctx, "thread/rollback", map[string]any{
+		"threadId":  threadID,
+		"numTurns": numTurns,
+	}, &response); err != nil {
+		return SessionDetail{}, err
+	}
+
+	a.store.UpsertThread(response.Thread)
+	_ = a.Refresh(ctx)
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok {
+		return SessionDetail{}, errors.New("session not found after rollback")
+	}
+	detail := paginateSessionDetail(toSessionDetail(record, pendingCountForThread(a.store.SnapshotPending(), threadID)), -1, 0)
+	a.broker.Publish("session.rollback", detail.Summary)
+	return detail, nil
 }
 
 func (a *Agent) StartTurnWithPrompt(ctx context.Context, threadID, prompt string) (TurnDetail, error) {

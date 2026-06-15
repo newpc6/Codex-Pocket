@@ -17,6 +17,12 @@ type ThreadLoadedListResponse struct {
 	NextCursor *string  `json:"nextCursor"`
 }
 
+type ThreadTurnsListResponse struct {
+	Data            []Turn  `json:"data"`
+	NextCursor      *string `json:"nextCursor"`
+	BackwardsCursor *string `json:"backwardsCursor"`
+}
+
 type ThreadReadResponse struct {
 	Thread Thread `json:"thread"`
 }
@@ -26,6 +32,18 @@ type ThreadStartResponse struct {
 }
 
 type ThreadResumeResponse struct {
+	Thread Thread `json:"thread"`
+}
+
+type ThreadForkResponse struct {
+	Thread Thread `json:"thread"`
+}
+
+type ThreadNameSetResponse struct {
+	Thread Thread `json:"thread"`
+}
+
+type ThreadRollbackResponse struct {
 	Thread Thread `json:"thread"`
 }
 

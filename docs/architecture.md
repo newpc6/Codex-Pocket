@@ -2,46 +2,48 @@
 
 ## Components
 
-### 1. Mac Agent
+### 1. Local Agent
 
 Responsibilities:
 
 - spawn and own a local `codex app-server`
-- discover sessions with `thread/list` and `thread/loaded/list`
+- discover sessions with `thread/list`, `thread/read`, `thread/turns/list`, and `thread/loaded/list`
 - subscribe to runtime notifications
 - queue approval requests from Codex
-- expose a mobile-friendly HTTP API
+- expose a browser-friendly HTTP API and SSE stream
+- keep local lifecycle state such as managed, ended, and runtime bindings
 
-### 2. iOS App
+### 2. Web Console
 
 Responsibilities:
 
 - dashboard for all sessions
+- chat-style session detail with Markdown, images, tools, and command output
 - approval center
-- session timeline with plan, diff, and command output
-- remote prompting, steering, and interrupt actions
+- directory picker for paths on the agent machine
+- remote prompting, steering, interrupt, detach, archive, fork, compact, and rollback actions
 
-### 3. Relay Layer
+### 3. Optional Relay Layer
 
 Planned later:
 
-- remote APNs push delivery
-- secure device pairing
-- authenticated relay instead of exposing the local agent directly
+- secure remote access without exposing the local agent directly
+- device pairing
+- notification delivery for approvals and turn completion
 
 ## Data Flow
 
-1. `CodexFlow Agent` starts `codex app-server --listen stdio://`
-2. Agent initializes the JSON-RPC session
-3. Agent refreshes thread inventory and listens for notifications
-4. iOS app calls the agent HTTP API
-5. Approvals are sent back through JSON-RPC response messages
+1. `CodexFlow Agent` starts `codex app-server --listen stdio://`.
+2. Agent initializes the JSON-RPC session with experimental API capability.
+3. Agent refreshes thread inventory and listens for notifications.
+4. Web Console calls the Agent HTTP API and subscribes to SSE.
+5. Approvals are sent back through JSON-RPC response messages.
 
 ## Why This Shape
 
-- `stdio` avoids an extra websocket dependency inside the local agent
-- the agent becomes the single place that can later add policy, relay, push, and audit
-- iOS works against a stable app-specific API instead of speaking raw Codex protocol directly
+- `stdio` keeps the Codex app-server transport local and simple.
+- the Go agent is the single place for policy, lifecycle, local files, relay, and audit.
+- the Web Console works against a stable app-specific API instead of speaking raw Codex protocol directly.
 
 ## Related Design Docs
 

@@ -309,6 +309,33 @@ export const useAppStore = defineStore('app', () => {
     await refreshDashboard()
   }
 
+  async function renameSession(id: string, name: string) {
+    const res = await api.post<SessionSummary>(`/sessions/${id}/rename`, { name })
+    await refreshDashboard()
+    await loadSession(id)
+    return res.data
+  }
+
+  async function forkSession(id: string) {
+    const res = await api.post<SessionSummary>(`/sessions/${id}/fork`)
+    await refreshDashboard()
+    await loadSession(res.data.id)
+    return res.data
+  }
+
+  async function compactSession(id: string) {
+    await api.post(`/sessions/${id}/compact`)
+    await refreshDashboard()
+    await loadSession(id)
+  }
+
+  async function rollbackSession(id: string, numTurns: number) {
+    const res = await api.post<SessionDetail>(`/sessions/${id}/rollback`, { numTurns })
+    sessionDetails.value[id] = res.data
+    await refreshDashboard()
+    return res.data
+  }
+
   async function startTurn(sessionId: string, prompt: string, imageUploadIds: string[] = []) {
     const inputs: Array<Record<string, string>> = []
     if (prompt.trim()) inputs.push({ type: 'text', text: prompt.trim() })
@@ -489,6 +516,7 @@ export const useAppStore = defineStore('app', () => {
     sseConnected, sseStatus, lastEvent, activeSessionIds,
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
     refreshDashboard, loadSession, resumeSession, detachSession, endSession, archiveSession,
+    renameSession, forkSession, compactSession, rollbackSession,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }
