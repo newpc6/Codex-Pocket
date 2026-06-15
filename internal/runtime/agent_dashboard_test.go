@@ -118,6 +118,42 @@ func TestSessionSummaryIncludesRuntimeAttachMode(t *testing.T) {
 	}
 }
 
+func TestDashboardActiveSessionsIncludeInProgressLastTurn(t *testing.T) {
+	sessionStore, err := store.New(nil)
+	if err != nil {
+		t.Fatalf("create session store: %v", err)
+	}
+
+	sessionStore.ReplaceSessions([]codex.Thread{
+		{
+			ID:            "running-turn-thread",
+			ModelProvider: "OpenAI",
+			CreatedAt:     100,
+			UpdatedAt:     200,
+			Status:        codex.ThreadStatus{Type: "idle"},
+			CWD:           "/tmp/running",
+			Turns: []codex.Turn{
+				{ID: "turn-1", Status: "inProgress"},
+			},
+		},
+		{
+			ID:            "flagged-thread",
+			ModelProvider: "OpenAI",
+			CreatedAt:     101,
+			UpdatedAt:     201,
+			Status:        codex.ThreadStatus{Type: "idle", ActiveFlags: []string{"waitingOnApproval"}},
+			CWD:           "/tmp/flagged",
+		},
+	}, map[string]bool{})
+
+	agent := &Agent{store: sessionStore}
+	dashboard := agent.Dashboard()
+
+	if got, want := dashboard.Stats.ActiveSessions, 2; got != want {
+		t.Fatalf("active sessions = %d, want %d", got, want)
+	}
+}
+
 func TestSessionSummaryUsesManagedStateForLoadedFlag(t *testing.T) {
 	sessionStore, err := store.New(nil)
 	if err != nil {

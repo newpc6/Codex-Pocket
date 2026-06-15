@@ -212,7 +212,7 @@ const filteredAndSearchedSessions = computed(() => {
   }
   if (filterByLifecycle.value) {
     if (filterByLifecycle.value === 'active') {
-      sessions = sessions.filter((s) => s.status === 'active' || s.lastTurnStatus === 'inProgress')
+      sessions = sessions.filter(isSessionActive)
     } else {
       sessions = sessions.filter((s) => s.lifecycleStage === filterByLifecycle.value)
     }
@@ -250,6 +250,14 @@ const visibleGroups = computed(() => {
 
 function displayName(session: SessionSummary) {
   return sessionDisplayName(session)
+}
+
+function isSessionActive(session: SessionSummary) {
+  if (session.ended) return false
+  return session.status === 'active'
+    || session.status === 'inProgress'
+    || session.lastTurnStatus === 'inProgress'
+    || (session.activeFlags?.length || 0) > 0
 }
 
 function onAgentSwitch(id: string) {

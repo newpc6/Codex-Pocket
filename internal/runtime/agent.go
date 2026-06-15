@@ -139,7 +139,7 @@ func (a *Agent) Dashboard() Dashboard {
 		if session.Loaded {
 			stats.LoadedSessions++
 		}
-		if session.Status == "active" && !session.Ended {
+		if sessionIsActive(session) {
 			stats.ActiveSessions++
 		}
 	}
@@ -157,6 +157,19 @@ func (a *Agent) Dashboard() Dashboard {
 		Sessions:     summaries,
 		Approvals:    approvals,
 	}
+}
+
+func sessionIsActive(session SessionSummary) bool {
+	if session.Ended {
+		return false
+	}
+	if session.Status == "active" || session.Status == "inProgress" {
+		return true
+	}
+	if session.LastTurnStatus == "inProgress" {
+		return true
+	}
+	return len(session.ActiveFlags) > 0
 }
 
 func (a *Agent) ListSessions() []SessionSummary {
@@ -526,6 +539,7 @@ func (a *Agent) Refresh(ctx context.Context) error {
 			continue
 		}
 		if !(loaded[threadID] || a.store.HasLocalSessionState(threadID)) {
+			_ = a.mergeCodexHistoryThread(&threads[idx])
 			continue
 		}
 		readCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
