@@ -54,7 +54,7 @@
           </div>
 
           <p v-if="summary.preview" class="hero-preview">
-            {{ metaCollapsed ? truncateText(summary.preview, 68) : truncateText(summary.preview, 180) }}
+            {{ metaCollapsed ? truncateText(summary.preview, 68) : summary.preview }}
           </p>
 
           <button v-if="summary.preview" type="button" class="hero-toggle" @click="metaCollapsed = !metaCollapsed">
@@ -160,7 +160,7 @@
                 :class="messageSide(item.type)"
               >
                 <div class="message-bubble" :class="bubbleClass(item.type)">
-                  <div class="message-topline">
+                  <div v-if="!isStructuredToolItem(item)" class="message-topline">
                     <span class="message-label">{{ itemLabel(item.type) }}</span>
                     <span v-if="item.status" class="message-status">{{ item.status }}</span>
                   </div>
@@ -689,11 +689,11 @@ onUnmounted(() => {
 .session-hero {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-  margin: 0 18px 10px;
+  gap: 8px;
+  padding: 10px 14px;
+  margin: 0 18px 8px;
   border: 1px solid var(--cf-border);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(140deg, rgba(51, 136, 255, 0.1) 0%, rgba(51, 136, 255, 0.02) 46%, rgba(255, 255, 255, 0.96) 100%),
     #fff;
@@ -735,8 +735,8 @@ onUnmounted(() => {
 
 .hero-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
   align-items: start;
 }
 
@@ -744,7 +744,7 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .hero-name-row {
@@ -755,7 +755,7 @@ onUnmounted(() => {
 }
 
 .hero-name {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1.1;
   font-weight: 700;
   color: var(--cf-text-heavy);
@@ -763,14 +763,14 @@ onUnmounted(() => {
 
 .hero-meta-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .hero-cwd {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--cf-text-secondary);
   font-family: monospace;
   overflow: hidden;
@@ -807,18 +807,18 @@ onUnmounted(() => {
 
 .hero-preview {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--cf-text-secondary);
-  max-width: 720px;
+  max-width: 780px;
 }
 
 .hero-toggle {
-  margin-top: -1px;
+  align-self: flex-start;
   border: 0;
   background: transparent;
   color: var(--cf-primary-dark);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   padding: 0;
@@ -828,12 +828,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(216, 230, 251, 0.95);
-  box-shadow: 0 8px 18px rgba(15, 46, 106, 0.05);
+  box-shadow: 0 6px 14px rgba(15, 46, 106, 0.05);
 }
 
 .hero-status-copy {
@@ -848,16 +848,16 @@ onUnmounted(() => {
 }
 
 .hero-status-value {
-  font-size: 14px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 1.2;
   font-weight: 700;
   color: var(--cf-text-heavy);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .hero-status-desc {
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--cf-text-secondary);
 }
 
@@ -868,9 +868,9 @@ onUnmounted(() => {
 }
 
 .hero-primary-actions :deep(.el-button) {
-  min-width: 104px;
-  min-height: 32px;
-  border-radius: 10px;
+  min-width: 116px;
+  min-height: 30px;
+  border-radius: 9px;
 }
 
 .hero-actions :deep(.el-button) {
@@ -1429,6 +1429,10 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .hero-name {
   font-size: 20px;
+}
+
+.session-detail-page.is-mobile .hero-preview {
+  max-width: 100%;
 }
 
 .session-detail-page.is-mobile .hero-status-card {

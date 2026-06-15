@@ -172,7 +172,7 @@ func normalizeItem(item map[string]any) TurnItem {
 		result.Body = codex.FirstUserText([]map[string]any{item})
 	case "agentMessage":
 		result.Title = "Agent"
-		result.Body = truncateTurnText(stringValue(item["text"]), maxTurnBodyChars)
+		result.Body = strings.TrimSpace(stringValue(item["text"]))
 	case "plan":
 		result.Title = "Plan"
 		result.Body = truncateTurnText(stringValue(item["text"]), maxTurnBodyChars)
