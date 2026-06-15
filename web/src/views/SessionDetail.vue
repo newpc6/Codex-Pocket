@@ -174,80 +174,173 @@
               </div>
 
               <div
-                v-for="(item, idx) in turn.items"
-                :key="item.id || `${turn.id}-${idx}`"
+                v-for="entry in turnPrimaryEntries(turn)"
+                :key="entry.item.id || `${turn.id}-${entry.index}`"
                 class="message-row"
-                :class="messageSide(item.type)"
+                :class="messageSide(entry.item.type)"
               >
-                <div class="message-bubble" :class="bubbleClass(item.type)">
-                  <div v-if="!isStructuredToolItem(item)" class="message-topline">
-                    <span class="message-label">{{ itemLabel(item.type) }}</span>
-                    <span v-if="item.status" class="message-status">{{ item.status }}</span>
+                <div class="message-bubble" :class="bubbleClass(entry.item.type)">
+                  <div v-if="!isStructuredToolItem(entry.item)" class="message-topline">
+                    <span class="message-label">{{ itemLabel(entry.item.type) }}</span>
+                    <span v-if="entry.item.status" class="message-status">{{ entry.item.status }}</span>
                   </div>
 
                   <div
-                    v-if="item.title && item.type !== 'userMessage' && item.type !== 'agentMessage' && !isStructuredToolItem(item)"
+                    v-if="entry.item.title && entry.item.type !== 'userMessage' && entry.item.type !== 'agentMessage' && !isStructuredToolItem(entry.item)"
                     class="message-title"
                   >
-                    {{ item.title }}
+                    {{ entry.item.title }}
                   </div>
 
-                  <template v-if="isStructuredToolItem(item)">
+                  <template v-if="isStructuredToolItem(entry.item)">
                     <div class="tool-card">
                       <div class="tool-summary">
                         <div class="tool-main">
                           <div class="tool-name">工具</div>
                           <div class="tool-headline">
-                            <span class="tool-type">{{ toolDisplayName(item) }}</span>
+                            <span class="tool-type">{{ toolDisplayName(entry.item) }}</span>
                             <span
-                              v-if="toolCommandTag(item)"
+                              v-if="toolCommandTag(entry.item)"
                               class="tool-command-tag"
-                              :title="toolCommandTag(item)"
+                              :title="toolCommandTag(entry.item)"
                             >
-                              {{ toolCommandTag(item) }}
+                              {{ toolCommandTag(entry.item) }}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <details v-if="hasStructuredToolDetails(item)" class="tool-details">
+                      <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
                         <summary>查看原始内容</summary>
-                        <div v-if="item.body" class="message-body is-code">
-                          <pre>{{ item.body }}</pre>
+                        <div v-if="entry.item.body" class="message-body is-code">
+                          <pre>{{ entry.item.body }}</pre>
                         </div>
-                        <div v-if="item.auxiliary" class="message-aux tool-output">
+                        <div v-if="entry.item.auxiliary" class="message-aux tool-output">
                           <div class="tool-output-title">输出</div>
-                          <pre>{{ item.auxiliary }}</pre>
+                          <pre>{{ entry.item.auxiliary }}</pre>
                         </div>
                       </details>
                     </div>
                   </template>
 
                   <template v-else>
-                    <div v-if="item.body" class="message-body" :class="{ 'is-code': isCodeType(item.type) }">
-                      <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
+                    <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
+                      <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
                       <div v-else class="markdown-body">
-                        <VueMarkdown :source="renderMarkdown(item.body)" :options="markdownOptions" />
-                        <span v-if="isStreamingItem(turn, item, idx)" class="typing-cursor">|</span>
+                        <VueMarkdown :source="renderMarkdown(entry.item.body)" :options="markdownOptions" />
+                        <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
                       </div>
                     </div>
 
-                    <details v-if="item.auxiliary" class="message-aux">
+                    <details v-if="entry.item.auxiliary" class="message-aux">
                       <summary>详细输出</summary>
-                      <pre>{{ item.auxiliary }}</pre>
+                      <pre>{{ entry.item.auxiliary }}</pre>
                     </details>
                   </template>
                 </div>
               </div>
 
               <div v-if="turn.diff" class="message-row side-left">
-                <div class="message-bubble bubble-tool">
-                  <div class="message-topline">
-                    <span class="message-label">文件变更</span>
-                  </div>
-                  <pre class="diff-block">{{ turn.diff }}</pre>
+                <div class="message-bubble bubble-tool file-change-card">
+                  <details>
+                    <summary class="file-change-summary">
+                      <span class="file-change-title">已编辑 {{ diffSummary(turn.diff).files.length }} 个文件</span>
+                      <span class="diff-add">+{{ diffSummary(turn.diff).additions }}</span>
+                      <span class="diff-del">-{{ diffSummary(turn.diff).deletions }}</span>
+                      <span class="file-change-action">查看 diff</span>
+                    </summary>
+                    <div class="file-change-list">
+                      <div v-for="file in diffSummary(turn.diff).files" :key="file.path" class="file-change-row">
+                        <span class="file-change-path">{{ file.path }}</span>
+                        <span class="file-change-stats">
+                          <span class="diff-add">+{{ file.additions }}</span>
+                          <span class="diff-del">-{{ file.deletions }}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <pre class="diff-block">{{ turn.diff }}</pre>
+                  </details>
                 </div>
               </div>
+
+              <details
+                v-if="turnProcessEntries(turn).length > 0"
+                class="turn-process"
+                :open="turn.status === 'inProgress'"
+              >
+                <summary class="turn-process-summary">
+                  <span>{{ turnProcessSummary(turn) }}</span>
+                  <span v-if="turn.durationMs > 0" class="turn-process-duration">{{ formatDurationMs(turn.durationMs) }}</span>
+                </summary>
+
+                <div class="turn-process-items">
+                  <div
+                    v-for="entry in turnProcessEntries(turn)"
+                    :key="entry.item.id || `${turn.id}-process-${entry.index}`"
+                    class="message-row side-left"
+                  >
+                    <div class="message-bubble" :class="bubbleClass(entry.item.type)">
+                      <div v-if="!isStructuredToolItem(entry.item)" class="message-topline">
+                        <span class="message-label">{{ itemLabel(entry.item.type) }}</span>
+                        <span v-if="entry.item.status" class="message-status">{{ entry.item.status }}</span>
+                      </div>
+
+                      <div
+                        v-if="entry.item.title && entry.item.type !== 'userMessage' && entry.item.type !== 'agentMessage' && !isStructuredToolItem(entry.item)"
+                        class="message-title"
+                      >
+                        {{ entry.item.title }}
+                      </div>
+
+                      <template v-if="isStructuredToolItem(entry.item)">
+                        <div class="tool-card">
+                          <div class="tool-summary">
+                            <div class="tool-main">
+                              <div class="tool-name">工具</div>
+                              <div class="tool-headline">
+                                <span class="tool-type">{{ toolDisplayName(entry.item) }}</span>
+                                <span
+                                  v-if="toolCommandTag(entry.item)"
+                                  class="tool-command-tag"
+                                  :title="toolCommandTag(entry.item)"
+                                >
+                                  {{ toolCommandTag(entry.item) }}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
+                            <summary>查看原始内容</summary>
+                            <div v-if="entry.item.body" class="message-body is-code">
+                              <pre>{{ entry.item.body }}</pre>
+                            </div>
+                            <div v-if="entry.item.auxiliary" class="message-aux tool-output">
+                              <div class="tool-output-title">输出</div>
+                              <pre>{{ entry.item.auxiliary }}</pre>
+                            </div>
+                          </details>
+                        </div>
+                      </template>
+
+                      <template v-else>
+                        <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
+                          <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
+                          <div v-else class="markdown-body">
+                            <VueMarkdown :source="renderMarkdown(entry.item.body)" :options="markdownOptions" />
+                            <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
+                          </div>
+                        </div>
+
+                        <details v-if="entry.item.auxiliary" class="message-aux">
+                          <summary>详细输出</summary>
+                          <pre>{{ entry.item.auxiliary }}</pre>
+                        </details>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </details>
 
               <div v-if="turn.error" class="message-row side-left">
                 <div class="message-bubble bubble-error">
@@ -345,6 +438,10 @@ const markdownOptions = {
 }
 
 const localAssetBase = '/api/v1/assets/local-image'
+type TurnItemEntry = { item: TurnItem; index: number }
+type DiffFileSummary = { path: string; additions: number; deletions: number }
+type DiffSummary = { files: DiffFileSummary[]; additions: number; deletions: number }
+const diffSummaryCache = new Map<string, DiffSummary>()
 
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
@@ -455,6 +552,84 @@ function extractCommandFromToolBody(body: string): string {
 
 function hasStructuredToolDetails(item: TurnItem): boolean {
   return Boolean((item.body && item.body.trim()) || (item.auxiliary && item.auxiliary.trim()))
+}
+
+function turnItemEntries(turn: Turn): TurnItemEntry[] {
+  return (turn.items || []).map((item, index) => ({ item, index }))
+}
+
+function isPrimaryItem(item: TurnItem): boolean {
+  return item.type === 'userMessage' || item.type === 'agentMessage'
+}
+
+function turnPrimaryEntries(turn: Turn): TurnItemEntry[] {
+  return turnItemEntries(turn).filter((entry) => isPrimaryItem(entry.item))
+}
+
+function turnProcessEntries(turn: Turn): TurnItemEntry[] {
+  return turnItemEntries(turn).filter((entry) => !isPrimaryItem(entry.item))
+}
+
+function isCommandLikeItem(item: TurnItem): boolean {
+  return item.type === 'commandExecution'
+    || item.type === 'mcpToolCall'
+    || item.type === 'dynamicToolCall'
+    || item.type === 'collabAgentToolCall'
+}
+
+function turnProcessSummary(turn: Turn): string {
+  const entries = turnProcessEntries(turn)
+  const commandCount = entries.filter((entry) => isCommandLikeItem(entry.item)).length
+  const fileChangeCount = entries.filter((entry) => entry.item.type === 'fileChange').length + diffSummary(turn.diff).files.length
+  const otherCount = Math.max(entries.length - commandCount - fileChangeCount, 0)
+  const parts: string[] = []
+  if (commandCount > 0) parts.push(`已运行 ${commandCount} 条命令`)
+  if (fileChangeCount > 0) parts.push(`修改 ${fileChangeCount} 个文件`)
+  if (otherCount > 0) parts.push(`${otherCount} 条过程`)
+  return parts.join(' · ') || `${entries.length} 条过程`
+}
+
+function formatDurationMs(ms: number): string {
+  if (!ms || ms <= 0) return ''
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const restSeconds = seconds % 60
+  if (minutes < 60) return restSeconds > 0 ? `${minutes}m ${restSeconds}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const restMinutes = minutes % 60
+  return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`
+}
+
+function diffSummary(diff: string): DiffSummary {
+  const cached = diffSummaryCache.get(diff || '')
+  if (cached) return cached
+  const files: DiffFileSummary[] = []
+  let current: DiffFileSummary | null = null
+  for (const line of (diff || '').split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
+      current = { path: match?.[2] || match?.[1] || 'unknown', additions: 0, deletions: 0 }
+      files.push(current)
+      continue
+    }
+    if (line.startsWith('+++ b/') && !current) {
+      current = { path: line.slice(6).trim(), additions: 0, deletions: 0 }
+      files.push(current)
+      continue
+    }
+    if (!current) continue
+    if (line.startsWith('+') && !line.startsWith('+++')) current.additions += 1
+    if (line.startsWith('-') && !line.startsWith('---')) current.deletions += 1
+  }
+  const result = {
+    files,
+    additions: files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+  }
+  diffSummaryCache.set(diff || '', result)
+  return result
 }
 
 function renderMarkdown(source: string): string {
@@ -1380,6 +1555,46 @@ onUnmounted(() => {
   color: var(--cf-text-secondary);
 }
 
+.turn-process {
+  width: min(100%, 860px);
+  margin-left: 0;
+  border: 1px solid #d9e6f7;
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.78);
+  box-shadow: 0 8px 18px rgba(15, 46, 106, 0.035);
+}
+
+.turn-process-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.turn-process-duration {
+  color: var(--cf-text-lighter);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.turn-process-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(216, 230, 251, 0.8);
+}
+
+.turn-process-items .message-bubble {
+  width: 100%;
+  box-shadow: none;
+}
+
 .message-row {
   display: flex;
   width: 100%;
@@ -1487,6 +1702,84 @@ onUnmounted(() => {
   border-radius: 10px;
   background: #0f172a;
   color: #e2e8f0;
+}
+
+.file-change-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.file-change-card details {
+  width: 100%;
+}
+
+.file-change-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--cf-text-secondary);
+}
+
+.file-change-title {
+  color: var(--cf-text-heavy);
+  font-weight: 700;
+}
+
+.file-change-action {
+  margin-left: auto;
+  color: var(--cf-primary-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.file-change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 14px 10px;
+  border-top: 1px solid rgba(216, 230, 251, 0.9);
+}
+
+.file-change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 7px 0;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+}
+
+.file-change-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.file-change-stats {
+  display: inline-flex;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.diff-add {
+  color: #059669;
+  font-weight: 650;
+}
+
+.diff-del {
+  color: #dc2626;
+  font-weight: 650;
+}
+
+.file-change-card .diff-block {
+  margin: 0 14px 14px;
+  max-height: 360px;
+  overflow: auto;
 }
 
 .message-aux {

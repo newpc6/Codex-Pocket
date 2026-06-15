@@ -23,7 +23,7 @@
     </div>
 
     <div class="stat-grid">
-      <div class="stat-card tone-blue" @click="filterByLifecycle = ''">
+      <div class="stat-card tone-blue" :class="{ 'is-selected': filterByLifecycle === '' }" @click="setLifecycleFilter('')">
         <div class="stat-head">
           <span>总会话</span>
           <el-button type="primary" link size="small">查看</el-button>
@@ -31,7 +31,7 @@
         <div class="stat-value">{{ stats.totalSessions }}</div>
         <div class="stat-desc">所有已发现的会话</div>
       </div>
-      <div class="stat-card tone-green" @click="filterByLifecycle = 'managed'">
+      <div class="stat-card tone-green" :class="{ 'is-selected': filterByLifecycle === 'managed' }" @click="setLifecycleFilter('managed')">
         <div class="stat-head">
           <span>已接管</span>
           <el-button type="primary" link size="small">筛选</el-button>
@@ -39,7 +39,7 @@
         <div class="stat-value">{{ stats.loadedSessions }}</div>
         <div class="stat-desc">正在由 CodexFlow 托管</div>
       </div>
-      <div class="stat-card tone-cyan" @click="filterByLifecycle = 'active'">
+      <div class="stat-card tone-cyan" :class="{ 'is-selected': filterByLifecycle === 'active' }" @click="setLifecycleFilter('active')">
         <div class="stat-head">
           <span>运行中</span>
           <el-button type="primary" link size="small">筛选</el-button>
@@ -69,6 +69,7 @@
         <el-input v-model="searchQuery" placeholder="搜索会话名称、路径、分支..." prefix-icon="Search" clearable
           class="search-box" />
         <el-select v-model="filterByLifecycle" placeholder="生命周期" clearable style="width: 140px">
+          <el-option label="运行中" value="active" />
           <el-option label="已接管" value="managed" />
           <el-option label="已结束" value="ended" />
           <el-option label="可接管" value="runtime_available" />
@@ -90,53 +91,62 @@
       </div>
     </el-card>
 
-    <div v-if="folderGroups.length > 0" class="folder-session-list">
-      <section v-for="group in folderGroups" :key="group.key" class="folder-group">
-        <div class="folder-heading">
-          <div class="folder-title-block">
-            <div class="folder-title-row">
-              <el-icon><FolderOpened /></el-icon>
-              <span class="folder-title">{{ group.name }}</span>
-              <el-tag size="small" type="info" round>{{ group.sessions.length }}</el-tag>
+    <div class="session-results">
+      <div v-if="folderGroups.length > 0" class="folder-session-list">
+        <section v-for="group in folderGroups" :key="group.key" class="folder-group">
+          <div class="folder-heading">
+            <div class="folder-title-block">
+              <div class="folder-title-row">
+                <el-icon><FolderOpened /></el-icon>
+                <span class="folder-title">{{ group.name }}</span>
+                <el-tag size="small" type="info" round>{{ group.sessions.length }}</el-tag>
+              </div>
+              <div class="folder-path">{{ group.path }}</div>
             </div>
-            <div class="folder-path">{{ group.path }}</div>
+            <div class="folder-heading-actions">
+              <div class="folder-stats">
+                <span v-if="group.activeCount > 0" class="folder-stat is-active">{{ group.activeCount }} 运行中</span>
+                <span v-if="group.managedCount > 0" class="folder-stat">{{ group.managedCount }} 已接管</span>
+              </div>
+              <el-button size="small" text :icon="Plus" @click.stop="openNewSessionForFolder(group.path)">
+                新建对话
+              </el-button>
+            </div>
           </div>
-          <div class="folder-stats">
-            <span v-if="group.activeCount > 0" class="folder-stat is-active">{{ group.activeCount }} 运行中</span>
-            <span v-if="group.managedCount > 0" class="folder-stat">{{ group.managedCount }} 已接管</span>
-          </div>
-        </div>
 
-        <div class="folder-session-items">
-          <button
-            v-for="session in group.sessions"
-            :key="session.id"
-            type="button"
-            class="session-row"
-            :class="{ 'is-running': isSessionActive(session), 'is-managed': session.loaded }"
-            @click="goDetail(session.id)"
-          >
-            <span class="session-state-dot"></span>
-            <span class="session-row-main">
-              <span class="session-row-title">{{ displayName(session) }}</span>
-              <span v-if="session.preview" class="session-row-preview">{{ truncateText(session.preview, 92) }}</span>
-            </span>
-            <span class="session-row-tags">
-              <el-tag v-if="session.branch" size="small" effect="plain">{{ session.branch }}</el-tag>
-              <el-tag size="small" :type="lifecycleTagType(session.lifecycleStage)" effect="light">
-                {{ lifecycleLabel(session.lifecycleStage) }}
-              </el-tag>
-              <el-tag :type="statusTagType(session.status, session.ended)" size="small" effect="light">
-                {{ statusLabel(session.status, session.ended, session.activeFlags?.length > 0) }}
-              </el-tag>
-            </span>
-            <span class="session-row-time">{{ formatTimestamp(session.updatedAt) }}</span>
-          </button>
-        </div>
-      </section>
+          <div class="folder-session-items">
+            <button
+              v-for="session in group.sessions"
+              :key="session.id"
+              type="button"
+              class="session-row"
+              :class="{ 'is-running': isSessionActive(session), 'is-managed': session.loaded }"
+              @click="goDetail(session.id)"
+            >
+              <span class="session-state-dot"></span>
+              <span class="session-row-main">
+                <span class="session-row-title">{{ displayName(session) }}</span>
+                <span v-if="session.preview" class="session-row-preview">{{ truncateText(session.preview, 92) }}</span>
+              </span>
+              <span class="session-row-tags">
+                <el-tag v-if="session.branch" size="small" effect="plain">{{ session.branch }}</el-tag>
+                <el-tag size="small" :type="lifecycleTagType(session.lifecycleStage)" effect="light">
+                  {{ lifecycleLabel(session.lifecycleStage) }}
+                </el-tag>
+                <el-tag :type="statusTagType(session.status, session.ended)" size="small" effect="light">
+                  {{ statusLabel(session.status, session.ended, session.activeFlags?.length > 0) }}
+                </el-tag>
+              </span>
+              <span class="session-row-time">{{ formatTimestamp(session.updatedAt) }}</span>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div v-else-if="!app.loading" class="session-empty-panel">
+        <el-empty description="没有匹配的会话" />
+      </div>
     </div>
-
-    <el-empty v-if="filteredAndSearchedSessions.length === 0 && !app.loading" description="没有匹配的会话" />
 
     <el-dialog v-model="showNewSession" title="新建会话" width="480px" :close-on-click-modal="false">
         <el-form :model="newForm" label-width="80px">
@@ -294,6 +304,21 @@ function goDetail(id: string) {
   router.push(`/session/${id}`)
 }
 
+function setLifecycleFilter(value: string) {
+  if (!value) {
+    filterByLifecycle.value = ''
+    return
+  }
+  filterByLifecycle.value = filterByLifecycle.value === value ? '' : value
+}
+
+function openNewSessionForFolder(cwd: string) {
+  newForm.cwd = cwd || ''
+  newForm.prompt = ''
+  newForm.agentId = app.selectedAgentId || 'codex'
+  showNewSession.value = true
+}
+
 function onDirectorySelected(path: string) {
   newForm.cwd = path
 }
@@ -332,6 +357,15 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
+.stat-card {
+  border: 1px solid transparent;
+}
+
+.stat-card.is-selected {
+  border-color: rgba(51, 136, 255, 0.45);
+  box-shadow: 0 12px 26px rgba(51, 136, 255, 0.1);
+}
+
 .filter-bar {
   display: flex;
   align-items: center;
@@ -357,6 +391,20 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.session-results {
+  min-height: 360px;
+}
+
+.session-empty-panel {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  border: 1px solid var(--cf-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: var(--cf-shadow-sm);
 }
 
 .folder-group {
@@ -428,6 +476,20 @@ onUnmounted(() => {
 .folder-stat.is-active {
   color: #b45309;
   background: #fff3dc;
+}
+
+.folder-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.folder-heading-actions :deep(.el-button) {
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--cf-primary-dark);
+  font-weight: 600;
 }
 
 .folder-session-items {
@@ -572,6 +634,11 @@ onUnmounted(() => {
 
   .folder-stats {
     flex-wrap: wrap;
+  }
+
+  .folder-heading-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .session-row {
