@@ -45,16 +45,16 @@
           </div>
 
           <div class="hero-meta-row">
-            <span class="hero-cwd">{{ summary.cwd }}</span>
             <div class="hero-tags">
               <span class="hero-pill" :class="{ 'is-active': summary.loaded }">{{ summary.loaded ? '已接管' : '未接管' }}</span>
               <span v-if="summary.branch" class="hero-pill">{{ summary.branch }}</span>
               <span class="hero-pill">{{ lifecycleLabel(summary.lifecycleStage) }}</span>
             </div>
+            <span class="hero-cwd">{{ summary.cwd }}</span>
           </div>
 
           <p v-if="summary.preview" class="hero-preview">
-            {{ metaCollapsed ? truncateText(summary.preview, 120) : truncateText(summary.preview, 220) }}
+            {{ metaCollapsed ? truncateText(summary.preview, 68) : truncateText(summary.preview, 180) }}
           </p>
 
           <button v-if="summary.preview" type="button" class="hero-toggle" @click="metaCollapsed = !metaCollapsed">
@@ -63,19 +63,21 @@
         </div>
 
         <div class="hero-status-card">
-          <div class="hero-status-label">当前状态</div>
-          <div class="hero-status-value">
-            {{ summary.ended ? '会话已结束' : summary.loaded ? 'CodexFlow 正在托管' : '会话未接管' }}
-          </div>
-          <div class="hero-status-desc">
-            {{ statusDescription(summary) }}
+          <div class="hero-status-copy">
+            <div class="hero-status-label">当前状态</div>
+            <div class="hero-status-value">
+              {{ summary.ended ? '会话已结束' : summary.loaded ? 'CodexFlow 正在托管' : '会话未接管' }}
+            </div>
+            <div class="hero-status-desc">
+              {{ statusDescription(summary) }}
+            </div>
           </div>
 
           <div class="hero-primary-actions">
             <el-button
               v-if="!summary.loaded && !summary.ended"
               type="primary"
-              size="default"
+              size="small"
               :loading="resuming"
               @click="handleResume"
             >
@@ -84,7 +86,7 @@
             <el-button
               v-else-if="summary.ended"
               type="primary"
-              size="default"
+              size="small"
               :loading="resuming"
               @click="handleResume"
             >
@@ -92,7 +94,7 @@
             </el-button>
             <el-button
               v-else
-              size="default"
+              size="small"
               :loading="detaching"
               @click="handleDetach"
             >
@@ -744,11 +746,11 @@ onUnmounted(() => {
 .session-hero {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
-  margin: 0 18px 14px;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0 18px 10px;
   border: 1px solid var(--cf-border);
-  border-radius: 18px;
+  border-radius: 16px;
   background:
     linear-gradient(140deg, rgba(51, 136, 255, 0.1) 0%, rgba(51, 136, 255, 0.02) 46%, rgba(255, 255, 255, 0.96) 100%),
     #fff;
@@ -759,19 +761,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .back-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 0;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: rgba(255, 255, 255, 0.88);
   color: var(--cf-text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(205, 223, 255, 0.8);
@@ -785,30 +787,32 @@ onUnmounted(() => {
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .hero-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 18px;
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
 }
 
 .hero-title-group {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .hero-name-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
 }
 
 .hero-name {
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1.1;
   font-weight: 700;
   color: var(--cf-text-heavy);
@@ -816,9 +820,9 @@ onUnmounted(() => {
 
 .hero-meta-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -830,24 +834,26 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  order: 2;
 }
 
 .hero-tags {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
+  order: 1;
 }
 
 .hero-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   background: rgba(51, 136, 255, 0.08);
   color: var(--cf-primary-dark);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -857,15 +863,15 @@ onUnmounted(() => {
 }
 
 .hero-preview {
-  margin-top: 12px;
-  font-size: 13px;
-  line-height: 1.7;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--cf-text-secondary);
-  max-width: 760px;
+  max-width: 720px;
 }
 
 .hero-toggle {
-  margin-top: 8px;
+  margin-top: -1px;
   border: 0;
   background: transparent;
   color: var(--cf-primary-dark);
@@ -877,48 +883,55 @@ onUnmounted(() => {
 
 .hero-status-card {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 16px 16px 14px;
-  border-radius: 16px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(216, 230, 251, 0.95);
-  box-shadow: 0 12px 24px rgba(15, 46, 106, 0.05);
+  box-shadow: 0 8px 18px rgba(15, 46, 106, 0.05);
+}
+
+.hero-status-copy {
+  min-width: 0;
+  flex: 1;
 }
 
 .hero-status-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--cf-text-lighter);
   font-weight: 600;
 }
 
 .hero-status-value {
-  font-size: 18px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.3;
   font-weight: 700;
   color: var(--cf-text-heavy);
+  margin-top: 2px;
 }
 
 .hero-status-desc {
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--cf-text-secondary);
 }
 
 .hero-primary-actions {
   display: flex;
-  justify-content: flex-start;
-  margin-top: auto;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .hero-primary-actions :deep(.el-button) {
-  min-width: 120px;
-  border-radius: 12px;
+  min-width: 104px;
+  min-height: 32px;
+  border-radius: 10px;
 }
 
 .hero-actions :deep(.el-button) {
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .live-indicator,
@@ -932,8 +945,8 @@ onUnmounted(() => {
 }
 
 .live-indicator {
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
@@ -1521,7 +1534,7 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .session-hero {
   margin: 0 10px 12px;
-  padding: 14px;
+  padding: 12px;
   border-radius: 16px;
 }
 
@@ -1531,8 +1544,17 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+.session-detail-page.is-mobile .hero-status-card {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.session-detail-page.is-mobile .hero-primary-actions {
+  justify-content: flex-start;
+}
+
 .session-detail-page.is-mobile .hero-name {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .session-detail-page.is-mobile .hero-status-card {
