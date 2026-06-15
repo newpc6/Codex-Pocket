@@ -208,7 +208,7 @@
                       <pre v-if="isCodeType(item.type)">{{ item.body }}</pre>
                       <div v-else class="markdown-body">
                         <VueMarkdown :source="renderMarkdown(item.body)" :options="markdownOptions" />
-                        <span v-if="isStreamingItem(turn, item)" class="typing-cursor">|</span>
+                        <span v-if="isStreamingItem(turn, item, idx)" class="typing-cursor">|</span>
                       </div>
                     </div>
 
@@ -469,8 +469,12 @@ function buildLocalImageUrl(path: string, token: string): string {
   return `${localAssetBase}?${params.toString()}`
 }
 
-function isStreamingItem(turn: Turn, item: TurnItem): boolean {
-  return turn.status === 'inProgress' && item.type === 'agentMessage'
+function isStreamingItem(turn: Turn, item: TurnItem, index: number): boolean {
+  if (turn.status !== 'inProgress' || item.type !== 'agentMessage') return false
+  for (let i = turn.items.length - 1; i > index; i -= 1) {
+    if (turn.items[i]?.type === 'agentMessage') return false
+  }
+  return true
 }
 
 function turnNumber(id: string) {
