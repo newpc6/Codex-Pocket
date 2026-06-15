@@ -328,6 +328,14 @@ const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
 const pendingNewMessages = ref(0)
+const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+let liveSyncTimer: ReturnType<typeof setInterval> | null = null
+let liveSyncBusy = false
+
+const liveLeaseKey = `cf_live_session_lease:${sessionId}`
+const liveSnapshotKey = `cf_live_session_snapshot:${sessionId}`
+const liveLeaseMs = 2600
+const liveSyncIntervalMs = 900
 
 const markdownOptions = {
   html: false,
@@ -550,6 +558,58 @@ async function refreshPage() {
 async function refreshSessionWhenVisible() {
   if (document.visibilityState !== 'visible') return
   await app.loadSession(sessionId)
+}
+
+function tryClaimLiveLease() {
+  const now = Date.now()
+  try {
+    const raw = localStorage.getItem(liveLeaseKey)
+    const lease = raw ? JSON.parse(raw) : null
+    if (lease?.owner && lease.owner !== tabInstanceId && Number(lease.expiresAt || 0) > now) {
+      return false
+    }
+    localStorage.setItem(liveLeaseKey, JSON.stringify({
+      owner: tabInstanceId,
+      expiresAt: now + liveLeaseMs,
+    }))
+    return true
+  } catch {
+    return true
+  }
+}
+
+function publishLiveSnapshot() {
+  const current = detail.value
+  if (!current) return
+  try {
+    localStorage.setItem(liveSnapshotKey, JSON.stringify({
+      owner: tabInstanceId,
+      updatedAt: Date.now(),
+      detail: current,
+    }))
+  } catch { /* storage unavailable */ }
+}
+
+async function syncLiveTranscript() {
+  if (document.visibilityState !== 'visible' || liveSyncBusy) return
+  if (summary.value?.agentId && summary.value.agentId !== 'codex') return
+  if (!tryClaimLiveLease()) return
+  liveSyncBusy = true
+  try {
+    await app.loadSession(sessionId, { fast: true })
+    publishLiveSnapshot()
+  } finally {
+    liveSyncBusy = false
+  }
+}
+
+function onLiveStorage(event: StorageEvent) {
+  if (event.key !== liveSnapshotKey || !event.newValue) return
+  try {
+    const payload = JSON.parse(event.newValue)
+    if (payload?.owner === tabInstanceId || !payload?.detail) return
+    app.replaceSessionDetail(sessionId, payload.detail)
+  } catch { /* ignore stale snapshot */ }
 }
 
 async function loadOlderTurns() {
@@ -825,6 +885,8 @@ onMounted(async () => {
   app.registerActiveSession(sessionId)
   document.addEventListener('visibilitychange', refreshSessionWhenVisible)
   window.addEventListener('focus', refreshSessionWhenVisible)
+  window.addEventListener('storage', onLiveStorage)
+  liveSyncTimer = setInterval(syncLiveTranscript, liveSyncIntervalMs)
   scrollChatToBottom(true)
 })
 
@@ -838,8 +900,18 @@ watch(summary, (next) => {
 
 onUnmounted(() => {
   app.unregisterActiveSession(sessionId)
+  if (liveSyncTimer) {
+    clearInterval(liveSyncTimer)
+    liveSyncTimer = null
+  }
+  try {
+    const raw = localStorage.getItem(liveLeaseKey)
+    const lease = raw ? JSON.parse(raw) : null
+    if (lease?.owner === tabInstanceId) localStorage.removeItem(liveLeaseKey)
+  } catch { /* ignore */ }
   document.removeEventListener('visibilitychange', refreshSessionWhenVisible)
   window.removeEventListener('focus', refreshSessionWhenVisible)
+  window.removeEventListener('storage', onLiveStorage)
   window.removeEventListener('resize', onResize)
 })
 </script>

@@ -214,10 +214,11 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  async function loadSession(id: string, options?: { offset?: number; limit?: number; appendHistory?: boolean }) {
+  async function loadSession(id: string, options?: { offset?: number; limit?: number; appendHistory?: boolean; fast?: boolean }) {
     const canReuse = !options?.appendHistory && typeof options?.offset !== 'number' && typeof options?.limit !== 'number'
+    const inFlightKey = `${id}:${options?.fast ? 'fast' : 'full'}`
     if (canReuse) {
-      const pending = sessionLoadInFlight.get(id)
+      const pending = sessionLoadInFlight.get(inFlightKey)
       if (pending) return pending
     }
 
@@ -226,6 +227,7 @@ export const useAppStore = defineStore('app', () => {
         const params: Record<string, number> = {}
         if (typeof options?.offset === 'number') params.offset = options.offset
         if (typeof options?.limit === 'number') params.limit = options.limit
+        if (options?.fast) params.fast = 1
         const res = await api.get<SessionDetail>(`/sessions/${id}`, { params })
         if (options?.appendHistory && sessionDetails.value[id]) {
           const existing = sessionDetails.value[id]
@@ -257,10 +259,10 @@ export const useAppStore = defineStore('app', () => {
 
     const promise = run()
     if (canReuse) {
-      sessionLoadInFlight.set(id, promise)
+      sessionLoadInFlight.set(inFlightKey, promise)
       promise.finally(() => {
-        if (sessionLoadInFlight.get(id) === promise) {
-          sessionLoadInFlight.delete(id)
+        if (sessionLoadInFlight.get(inFlightKey) === promise) {
+          sessionLoadInFlight.delete(inFlightKey)
         }
       })
     }
@@ -275,6 +277,10 @@ export const useAppStore = defineStore('app', () => {
       sessionRefreshTimers.delete(id)
       await loadSession(id)
     }, delay))
+  }
+
+  function replaceSessionDetail(id: string, detail: SessionDetail) {
+    sessionDetails.value[id] = detail
   }
 
   function scheduleDashboardRefresh(delay = 500) {
@@ -614,7 +620,7 @@ export const useAppStore = defineStore('app', () => {
       if (!aggressive && !knownDetail) return
       if (sseConnected.value) return
       await loadSession(id)
-      if (aggressive) {
+      if (aggressive && !sseConnected.value) {
         await refreshDashboard()
       }
     }, 2500)
@@ -638,6 +644,7 @@ export const useAppStore = defineStore('app', () => {
     renameSession, forkSession, compactSession, rollbackSession,
     setSessionGoal, clearSessionGoal,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
+    replaceSessionDetail,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }
 })

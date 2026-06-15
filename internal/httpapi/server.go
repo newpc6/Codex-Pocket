@@ -301,7 +301,14 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			limit = parsed
 		}
 
-		detail, err := s.agent.SessionDetail(ctx, sessionID, offset, limit)
+		fast := strings.TrimSpace(r.URL.Query().Get("fast")) == "1" || strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("fast")), "true")
+		var detail runtime.SessionDetail
+		var err error
+		if fast {
+			detail, err = s.agent.FastSessionDetail(sessionID, offset, limit)
+		} else {
+			detail, err = s.agent.SessionDetail(ctx, sessionID, offset, limit)
+		}
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err)
 			return

@@ -246,6 +246,24 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 	return detail, nil
 }
 
+func (a *Agent) FastSessionDetail(threadID string, offset, limit int) (SessionDetail, error) {
+	if isClaudeThreadID(threadID) {
+		return a.claudeSessionDetail(threadID, offset, limit)
+	}
+
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok {
+		return SessionDetail{}, errors.New("session not found")
+	}
+	if err := a.refreshCodexThreadFromHistory(&record); err == nil {
+		a.store.UpsertThread(record.Thread)
+		record, _ = a.store.SnapshotSession(threadID)
+	}
+
+	pendingCount := pendingCountForThread(a.store.SnapshotPending(), threadID)
+	return paginateSessionDetail(toSessionDetail(record, pendingCount), offset, limit), nil
+}
+
 func (a *Agent) tryLoadCodexTurnsPage(ctx context.Context, threadID string, limit int) ([]codex.Turn, bool) {
 	if strings.TrimSpace(threadID) == "" {
 		return nil, false
