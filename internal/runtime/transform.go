@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 const (
 	maxTurnBodyChars      = 1200
 	maxTurnAuxiliaryChars = 1500
+	maxToolCommandChars   = 240
 )
 
 func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionSummary {
@@ -212,6 +214,11 @@ func normalizeItem(item map[string]any) TurnItem {
 		if title, ok := item["title"].(string); ok && strings.TrimSpace(title) != "" {
 			result.Title = strings.TrimSpace(title)
 		}
+		if rawSummary, ok := item["summary"].(string); ok {
+			if command := extractShellCommand(rawSummary); command != "" {
+				result.Metadata["command"] = truncateInlineText(command, maxToolCommandChars)
+			}
+		}
 		if summary, ok := item["summary"].(string); ok && strings.TrimSpace(summary) != "" {
 			result.Body = truncateTurnText(strings.TrimSpace(summary), maxTurnBodyChars)
 		} else {
@@ -247,6 +254,21 @@ func normalizeItem(item map[string]any) TurnItem {
 	return result
 }
 
+func extractShellCommand(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+		if command := strings.TrimSpace(stringValue(decoded["command"])); command != "" {
+			return command
+		}
+	}
+	return ""
+}
+
 func summarizeUnknown(item map[string]any) string {
 	parts := make([]string, 0, 4)
 	for _, key := range []string{"status", "review", "result"} {
@@ -263,6 +285,17 @@ func truncateTurnText(text string, limit int) string {
 		return text
 	}
 	return strings.TrimSpace(text[:limit]) + "\n\n...[已截断]"
+}
+
+func truncateInlineText(text string, limit int) string {
+	text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	if limit <= 1 {
+		return text[:limit]
+	}
+	return strings.TrimSpace(text[:limit-1]) + "…"
 }
 
 func stringValue(value any) string {

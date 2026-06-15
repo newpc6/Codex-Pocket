@@ -376,26 +376,6 @@ func appendCodexAgentMessage(turns *[]codex.Turn, turnsByID map[string]*codex.Tu
 	if turnHasAgentText(turn.Items, trimmed) {
 		return
 	}
-	if strings.TrimSpace(phase) == "commentary" {
-		for i := len(turn.Items) - 1; i >= 0; i-- {
-			if toString(turn.Items[i]["type"]) != "agentMessage" {
-				continue
-			}
-			turn.Items[i]["text"] = trimmed
-			if id := strings.TrimSpace(toString(turn.Items[i]["id"])); id == "" {
-				turn.Items[i]["id"] = fmt.Sprintf("%s:%s", turnID, phase)
-			}
-			if strings.TrimSpace(turn.Status) == "" {
-				turn.Status = "inProgress"
-			}
-			if turn.StartedAt == nil {
-				if ts := parseRFC3339ToUnix(tsRaw); ts > 0 {
-					turn.StartedAt = &ts
-				}
-			}
-			return
-		}
-	}
 	itemID := fmt.Sprintf("%s:%s:%d", turnID, phase, len(turn.Items))
 	turn.Items = append(turn.Items, map[string]any{
 		"id":   itemID,

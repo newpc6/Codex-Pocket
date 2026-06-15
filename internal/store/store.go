@@ -386,6 +386,8 @@ func (s *Store) RecordMessageDelta(threadID, turnID, itemID, delta string) {
 		for j := range record.Thread.Turns[i].Items {
 			existingID, _ := record.Thread.Turns[i].Items[j]["id"].(string)
 			if existingID == itemID {
+				record.Thread.Turns[i].Items[j]["type"] = "agentMessage"
+				record.Thread.Turns[i].Items[j]["text"] = record.Runtime.MessageDeltasByItem[itemID]
 				return
 			}
 		}

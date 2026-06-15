@@ -375,7 +375,6 @@ export const useAppStore = defineStore('app', () => {
         const params = parseNotificationParams(event)
         if (method === 'agentMessage/delta') {
           applyAgentMessageDelta(threadId, params)
-          scheduleSessionLoad(threadId, 320)
         } else {
           scheduleSessionLoad(threadId, 80)
         }

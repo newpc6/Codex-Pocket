@@ -400,8 +400,24 @@ function toolDisplayName(item: TurnItem): string {
 }
 
 function toolCommandTag(item: TurnItem): string {
-  if (item.type !== 'commandExecution') return ''
-  return (item.body || '').trim()
+  const metadataCommand = (item.metadata?.command || '').trim()
+  if (metadataCommand) return metadataCommand
+  if (item.type === 'commandExecution') return (item.body || '').trim()
+  if (item.type === 'dynamicToolCall' && toolDisplayName(item) === 'shell_command') {
+    return extractCommandFromToolBody(item.body)
+  }
+  return ''
+}
+
+function extractCommandFromToolBody(body: string): string {
+  const raw = (body || '').trim()
+  if (!raw) return ''
+  try {
+    const decoded = JSON.parse(raw)
+    return typeof decoded?.command === 'string' ? decoded.command.trim() : ''
+  } catch {
+    return ''
+  }
 }
 
 function hasStructuredToolDetails(item: TurnItem): boolean {

@@ -125,8 +125,8 @@ func TestRecordMessageDeltaCreatesStreamingAgentItem(t *testing.T) {
 	if got, _ := record.Thread.Turns[0].Items[0]["type"].(string); got != "agentMessage" {
 		t.Fatalf("item type = %q, want agentMessage", got)
 	}
-	if got, _ := record.Thread.Turns[0].Items[0]["text"].(string); got != "hello" {
-		t.Fatalf("initial streaming item text = %q, want first delta snapshot", got)
+	if got, _ := record.Thread.Turns[0].Items[0]["text"].(string); got != "hello world" {
+		t.Fatalf("streaming item text = %q, want accumulated delta text", got)
 	}
 }
 
