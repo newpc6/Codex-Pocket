@@ -63,8 +63,17 @@ export interface Turn {
   items: TurnItem[]
 }
 
+export interface SessionGoal {
+  objective: string
+  status: string
+  tokenBudget: number
+  tokensUsed: number
+  timeUsedSeconds: number
+}
+
 export interface SessionDetail {
   summary: SessionSummary
+  goal?: SessionGoal
   turns: Turn[]
   totalTurns: number
   offset: number
@@ -336,6 +345,25 @@ export const useAppStore = defineStore('app', () => {
     return res.data
   }
 
+  async function setSessionGoal(id: string, objective: string, tokenBudget = 0) {
+    const res = await api.post<SessionGoal>(`/sessions/${id}/goal`, {
+      objective,
+      status: 'active',
+      tokenBudget,
+    })
+    if (sessionDetails.value[id]) {
+      sessionDetails.value[id].goal = res.data
+    }
+    return res.data
+  }
+
+  async function clearSessionGoal(id: string) {
+    await api.post(`/sessions/${id}/goal/clear`)
+    if (sessionDetails.value[id]) {
+      delete sessionDetails.value[id].goal
+    }
+  }
+
   async function startTurn(sessionId: string, prompt: string, imageUploadIds: string[] = []) {
     const inputs: Array<Record<string, string>> = []
     if (prompt.trim()) inputs.push({ type: 'text', text: prompt.trim() })
@@ -411,6 +439,7 @@ export const useAppStore = defineStore('app', () => {
       if ([
         'turn/started', 'turn/completed',
         'thread/started', 'thread/status/changed', 'thread/closed',
+        'thread/goal/updated', 'thread/goal/cleared',
         'item/started', 'item/completed',
       ].includes(method)) {
         await refreshDashboard()
@@ -517,6 +546,7 @@ export const useAppStore = defineStore('app', () => {
     filteredSessions, filteredApprovals, sessionGroups, isAgentOnline,
     refreshDashboard, loadSession, resumeSession, detachSession, endSession, archiveSession,
     renameSession, forkSession, compactSession, rollbackSession,
+    setSessionGoal, clearSessionGoal,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }

@@ -47,6 +47,19 @@ type ThreadRollbackResponse struct {
 	Thread Thread `json:"thread"`
 }
 
+type ThreadGoalResponse struct {
+	Goal *ThreadGoal `json:"goal"`
+}
+
+type ThreadGoal struct {
+	ThreadID        string `json:"threadId"`
+	Objective       string `json:"objective"`
+	Status          string `json:"status"`
+	TokenBudget     *int64 `json:"tokenBudget"`
+	TokensUsed      int64  `json:"tokensUsed"`
+	TimeUsedSeconds int64  `json:"timeUsedSeconds"`
+}
+
 type AppsListResponse struct {
 	Data       []AppInfo `json:"data"`
 	NextCursor *string   `json:"nextCursor"`

@@ -26,6 +26,8 @@
                   <el-icon><SwitchButton /></el-icon> 结束会话
                 </el-dropdown-item>
                 <el-dropdown-item command="rename">重命名</el-dropdown-item>
+                <el-dropdown-item v-if="summary.agentId === 'codex'" command="goal">设置目标</el-dropdown-item>
+                <el-dropdown-item v-if="summary.agentId === 'codex' && detail?.goal" command="goal-clear">清空目标</el-dropdown-item>
                 <el-dropdown-item v-if="summary.agentId === 'codex'" command="fork">分支会话</el-dropdown-item>
                 <el-dropdown-item v-if="summary.agentId === 'codex'" command="compact">压缩上下文</el-dropdown-item>
                 <el-dropdown-item v-if="summary.agentId === 'codex'" command="rollback">回滚最近一轮</el-dropdown-item>
@@ -106,6 +108,24 @@
     </div>
 
     <div class="content-area">
+      <div v-if="detail?.goal" class="goal-card">
+        <div class="goal-main">
+          <div class="goal-label">当前目标</div>
+          <div class="goal-objective">{{ detail.goal.objective }}</div>
+          <div class="goal-meta">
+            <span>{{ goalStatusLabel(detail.goal.status) }}</span>
+            <span v-if="detail.goal.tokenBudget > 0">
+              {{ detail.goal.tokensUsed }} / {{ detail.goal.tokenBudget }} tokens
+            </span>
+            <span v-if="detail.goal.timeUsedSeconds > 0">{{ formatGoalTime(detail.goal.timeUsedSeconds) }}</span>
+          </div>
+        </div>
+        <div class="goal-actions">
+          <el-button size="small" text @click="handleGoal">编辑</el-button>
+          <el-button size="small" text type="danger" @click="handleClearGoal">清空</el-button>
+        </div>
+      </div>
+
       <div v-if="sessionApprovals.length > 0" class="approval-section">
         <div v-for="approval in sessionApprovals" :key="approval.id" class="approval-card">
           <div class="approval-info">
@@ -560,6 +580,8 @@ function onAction(cmd: string) {
   else if (cmd === 'detach') handleDetach()
   else if (cmd === 'end') handleEnd()
   else if (cmd === 'rename') handleRename()
+  else if (cmd === 'goal') handleGoal()
+  else if (cmd === 'goal-clear') handleClearGoal()
   else if (cmd === 'fork') handleFork()
   else if (cmd === 'compact') handleCompact()
   else if (cmd === 'rollback') handleRollback()
@@ -645,6 +667,36 @@ async function handleRename() {
   } catch { /* cancelled */ }
 }
 
+async function handleGoal() {
+  const current = detail.value?.goal?.objective || ''
+  try {
+    const { value } = await ElMessageBox.prompt('设置这个会话的目标，Codex 会把它作为持续任务目标保存。', '设置目标', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputType: 'textarea',
+      inputValue: current,
+      inputPattern: /\S+/,
+      inputErrorMessage: '目标不能为空',
+    })
+    const objective = String(value || '').trim()
+    if (!objective) return
+    await app.setSessionGoal(sessionId, objective)
+    ElMessage.success('目标已保存')
+  } catch { /* cancelled */ }
+}
+
+async function handleClearGoal() {
+  try {
+    await ElMessageBox.confirm('确定要清空当前会话目标吗？', '清空目标', {
+      confirmButtonText: '清空',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await app.clearSessionGoal(sessionId)
+    ElMessage.success('目标已清空')
+  } catch { /* cancelled */ }
+}
+
 async function handleFork() {
   try {
     await ElMessageBox.confirm('会基于当前历史创建一个新的 Codex 会话分支。', '分支会话', {
@@ -726,6 +778,24 @@ function choiceType(choice: string) {
   }
 }
 
+function goalStatusLabel(status: string) {
+  switch (status) {
+    case 'active': return '进行中'
+    case 'complete': return '已完成'
+    case 'blocked': return '已阻塞'
+    default: return status || '目标'
+  }
+}
+
+function formatGoalTime(seconds: number) {
+  if (!seconds || seconds <= 0) return ''
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 1) return `${seconds}s`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 1) return `${minutes}m`
+  return `${hours}h ${minutes % 60}m`
+}
+
 async function handleApprovalChoice(approval: ApprovalRequest, decision: string) {
   try {
     let result: Record<string, any>
@@ -786,6 +856,54 @@ onUnmounted(() => {
 }
 
 .input-area {
+  flex-shrink: 0;
+}
+
+.goal-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 18px 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(151, 194, 255, 0.75);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--cf-shadow-sm);
+}
+
+.goal-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.goal-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cf-primary);
+}
+
+.goal-objective {
+  color: var(--cf-text-heavy);
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.goal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+}
+
+.goal-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
 }
 

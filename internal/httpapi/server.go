@@ -424,6 +424,39 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, detail)
+	case "goal":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var request struct {
+			Objective   string `json:"objective"`
+			Status      string `json:"status"`
+			TokenBudget int64  `json:"tokenBudget"`
+		}
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		goal, err := s.agent.SetSessionGoal(ctx, sessionID, request.Objective, request.Status, request.TokenBudget)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, goal)
+	case "goal/clear":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		if err := s.agent.ClearSessionGoal(ctx, sessionID); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "turns/start":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w)

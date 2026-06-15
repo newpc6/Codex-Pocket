@@ -239,7 +239,11 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 
 	pendingCount := pendingCountForThread(a.store.SnapshotPending(), threadID)
 
-	return paginateSessionDetail(toSessionDetail(record, pendingCount), offset, limit), nil
+	detail := paginateSessionDetail(toSessionDetail(record, pendingCount), offset, limit)
+	if goal, ok := a.getCodexSessionGoal(ctx, threadID); ok {
+		detail.Goal = goal
+	}
+	return detail, nil
 }
 
 func (a *Agent) tryLoadCodexTurnsPage(ctx context.Context, threadID string, limit int) ([]codex.Turn, bool) {
@@ -822,6 +826,80 @@ func (a *Agent) ArchiveSession(ctx context.Context, threadID string) error {
 	return nil
 }
 
+func (a *Agent) getCodexSessionGoal(ctx context.Context, threadID string) (*SessionGoal, bool) {
+	if strings.TrimSpace(threadID) == "" || isClaudeThreadID(threadID) {
+		return nil, false
+	}
+	goalCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var response codex.ThreadGoalResponse
+	if err := a.client.Call(goalCtx, "thread/goal/get", map[string]any{
+		"threadId": threadID,
+	}, &response); err != nil {
+		a.logger.Debug("thread goal get unavailable", "threadId", threadID, "error", err)
+		return nil, false
+	}
+	return toSessionGoal(response.Goal), response.Goal != nil
+}
+
+func toSessionGoal(goal *codex.ThreadGoal) *SessionGoal {
+	if goal == nil || strings.TrimSpace(goal.Objective) == "" {
+		return nil
+	}
+	var budget int64
+	if goal.TokenBudget != nil {
+		budget = *goal.TokenBudget
+	}
+	return &SessionGoal{
+		Objective:       strings.TrimSpace(goal.Objective),
+		Status:          strings.TrimSpace(goal.Status),
+		TokenBudget:     budget,
+		TokensUsed:      goal.TokensUsed,
+		TimeUsedSeconds: goal.TimeUsedSeconds,
+	}
+}
+
+func (a *Agent) SetSessionGoal(ctx context.Context, threadID, objective, status string, tokenBudget int64) (*SessionGoal, error) {
+	if isClaudeThreadID(threadID) {
+		return nil, errors.New("goal is not supported for claude sessions")
+	}
+	objective = strings.TrimSpace(objective)
+	if objective == "" {
+		return nil, errors.New("goal objective is required")
+	}
+	params := map[string]any{
+		"threadId":  threadID,
+		"objective": objective,
+		"status":    emptyToDefault(strings.TrimSpace(status), "active"),
+	}
+	if tokenBudget > 0 {
+		params["tokenBudget"] = tokenBudget
+	}
+	var response codex.ThreadGoalResponse
+	if err := a.client.Call(ctx, "thread/goal/set", params, &response); err != nil {
+		return nil, err
+	}
+	goal := toSessionGoal(response.Goal)
+	a.broker.Publish("session.goal.updated", map[string]any{
+		"threadId": threadID,
+		"goal":     goal,
+	})
+	return goal, nil
+}
+
+func (a *Agent) ClearSessionGoal(ctx context.Context, threadID string) error {
+	if isClaudeThreadID(threadID) {
+		return errors.New("goal is not supported for claude sessions")
+	}
+	if err := a.client.Call(ctx, "thread/goal/clear", map[string]any{
+		"threadId": threadID,
+	}, nil); err != nil {
+		return err
+	}
+	a.broker.Publish("session.goal.cleared", map[string]string{"threadId": threadID})
+	return nil
+}
+
 func (a *Agent) RenameSession(ctx context.Context, threadID, name string) (SessionSummary, error) {
 	if isClaudeThreadID(threadID) {
 		return SessionSummary{}, errors.New("rename is not supported for claude sessions")
@@ -1252,6 +1330,14 @@ func deriveChoices(method string, params map[string]any) []string {
 func emptyToNil(value string) any {
 	if strings.TrimSpace(value) == "" {
 		return nil
+	}
+	return value
+}
+
+func emptyToDefault(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
 	}
 	return value
 }

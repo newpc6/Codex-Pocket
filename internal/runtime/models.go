@@ -71,11 +71,20 @@ type SessionSummary struct {
 
 type SessionDetail struct {
 	Summary        SessionSummary `json:"summary"`
+	Goal           *SessionGoal   `json:"goal,omitempty"`
 	Turns          []TurnDetail   `json:"turns"`
 	TotalTurns     int            `json:"totalTurns"`
 	Offset         int            `json:"offset"`
 	Limit          int            `json:"limit"`
 	HasMoreHistory bool           `json:"hasMoreHistory"`
+}
+
+type SessionGoal struct {
+	Objective       string `json:"objective"`
+	Status          string `json:"status"`
+	TokenBudget     int64  `json:"tokenBudget"`
+	TokensUsed      int64  `json:"tokensUsed"`
+	TimeUsedSeconds int64  `json:"timeUsedSeconds"`
 }
 
 type TurnDetail struct {
