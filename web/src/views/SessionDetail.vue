@@ -173,7 +173,16 @@
                       <div class="tool-summary">
                         <div class="tool-main">
                           <div class="tool-name">工具</div>
-                          <div class="tool-headline">{{ toolDisplayName(item) }}</div>
+                          <div class="tool-headline">
+                            <span class="tool-type">{{ toolDisplayName(item) }}</span>
+                            <span
+                              v-if="toolCommandTag(item)"
+                              class="tool-command-tag"
+                              :title="toolCommandTag(item)"
+                            >
+                              {{ toolCommandTag(item) }}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -385,13 +394,14 @@ function isStructuredToolItem(item: TurnItem): boolean {
 }
 
 function toolDisplayName(item: TurnItem): string {
-  if (item.type === 'commandExecution') {
-    const toolName = (item.title || 'shell_command').trim() || 'shell_command'
-    const command = (item.body || '').trim()
-    return command ? `${toolName}: ${command}` : toolName
-  }
+  if (item.type === 'commandExecution') return (item.title || 'shell_command').trim() || 'shell_command'
   const raw = item.title || item.type
   return raw.trim() || item.type
+}
+
+function toolCommandTag(item: TurnItem): string {
+  if (item.type !== 'commandExecution') return ''
+  return (item.body || '').trim()
 }
 
 function hasStructuredToolDetails(item: TurnItem): boolean {
@@ -489,6 +499,11 @@ watch(orderedTurns, (next, prev) => {
 
 async function refreshPage() {
   await app.refreshDashboard()
+  await app.loadSession(sessionId)
+}
+
+async function refreshSessionWhenVisible() {
+  if (document.visibilityState !== 'visible') return
   await app.loadSession(sessionId)
 }
 
@@ -653,6 +668,8 @@ async function handleApprovalChoice(approval: ApprovalRequest, decision: string)
 onMounted(async () => {
   await refreshPage()
   app.registerActiveSession(sessionId)
+  document.addEventListener('visibilitychange', refreshSessionWhenVisible)
+  window.addEventListener('focus', refreshSessionWhenVisible)
   scrollChatToBottom(true)
 })
 
@@ -666,6 +683,8 @@ watch(summary, (next) => {
 
 onUnmounted(() => {
   app.unregisterActiveSession(sessionId)
+  document.removeEventListener('visibilitychange', refreshSessionWhenVisible)
+  window.removeEventListener('focus', refreshSessionWhenVisible)
   window.removeEventListener('resize', onResize)
 })
 </script>

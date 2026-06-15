@@ -371,7 +371,7 @@ export const useAppStore = defineStore('app', () => {
       if (!method) return
 
       const threadId = parseNotificationThreadId(event)
-      if (threadId && activeSessionIds.value.has(threadId)) {
+      if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         const params = parseNotificationParams(event)
         if (method === 'agentMessage/delta') {
           applyAgentMessageDelta(threadId, params)
@@ -420,7 +420,7 @@ export const useAppStore = defineStore('app', () => {
     // Turn events
     sseService.on('turn.started', async (event: SSEEvent) => {
       const threadId = event.payload?.threadId as string
-      if (threadId && activeSessionIds.value.has(threadId)) {
+      if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
       await refreshDashboard()
@@ -428,14 +428,14 @@ export const useAppStore = defineStore('app', () => {
 
     sseService.on('turn.steered', async (event: SSEEvent) => {
       const threadId = event.payload?.threadId as string
-      if (threadId && activeSessionIds.value.has(threadId)) {
+      if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
     })
 
     sseService.on('turn.interrupted', async (event: SSEEvent) => {
       const threadId = event.payload?.threadId as string
-      if (threadId && activeSessionIds.value.has(threadId)) {
+      if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
         await loadSession(threadId)
       }
       await refreshDashboard()
