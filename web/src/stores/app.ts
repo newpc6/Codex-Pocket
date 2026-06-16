@@ -631,6 +631,7 @@ export const useAppStore = defineStore('app', () => {
   async function interruptTurn(sessionId: string, turnId: string) {
     await api.post(`/sessions/${sessionId}/turns/interrupt`, { turnId })
     await refreshDashboard()
+    await loadSession(sessionId)
   }
 
   async function resolveApproval(id: string, result: Record<string, any>) {

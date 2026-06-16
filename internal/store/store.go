@@ -692,9 +692,12 @@ func clonePending(request PendingRequest) PendingRequest {
 
 func mergeThread(existing, incoming codex.Thread) codex.Thread {
 	merged := incoming
+	preservedTerminal := false
 
 	if len(merged.Turns) == 0 && len(existing.Turns) > 0 {
 		merged.Turns = cloneTurns(existing.Turns)
+	} else if len(merged.Turns) > 0 && len(existing.Turns) > 0 {
+		merged.Turns, preservedTerminal = preserveTerminalTurns(existing.Turns, merged.Turns)
 	}
 	if strings.TrimSpace(merged.Preview) == "" && strings.TrimSpace(existing.Preview) != "" {
 		merged.Preview = existing.Preview
@@ -729,8 +732,57 @@ func mergeThread(existing, incoming codex.Thread) codex.Thread {
 	if len(merged.GitInfo) == 0 && len(existing.GitInfo) > 0 {
 		merged.GitInfo = cloneMap(existing.GitInfo)
 	}
+	if preservedTerminal && merged.Status.Type == "active" && !hasRunningTurn(merged.Turns) {
+		merged.Status = codex.ThreadStatus{Type: "idle"}
+	}
 
 	return merged
+}
+
+func preserveTerminalTurns(existing, incoming []codex.Turn) ([]codex.Turn, bool) {
+	merged := cloneTurns(incoming)
+	preserved := false
+	indexByID := make(map[string]int, len(merged))
+	for idx := range merged {
+		indexByID[merged[idx].ID] = idx
+	}
+	for _, turn := range existing {
+		if !isTerminalTurnStatus(turn.Status) {
+			continue
+		}
+		idx, ok := indexByID[turn.ID]
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(merged[idx].Status) != "inProgress" {
+			continue
+		}
+		kept := turn
+		if len(merged[idx].Items) > 0 {
+			kept.Items = merged[idx].Items
+		}
+		merged[idx] = kept
+		preserved = true
+	}
+	return merged, preserved
+}
+
+func isTerminalTurnStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "completed", "interrupted", "failed", "cancelled", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasRunningTurn(turns []codex.Turn) bool {
+	for _, turn := range turns {
+		if strings.TrimSpace(turn.Status) == "inProgress" {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneTurns(turns []codex.Turn) []codex.Turn {

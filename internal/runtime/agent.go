@@ -662,7 +662,7 @@ func mergeCodexTurns(existing, incoming []codex.Turn) []codex.Turn {
 
 func mergeCodexTurn(existing, incoming codex.Turn) codex.Turn {
 	merged := existing
-	if strings.TrimSpace(incoming.Status) != "" {
+	if shouldMergeCodexTurnStatus(existing.Status, incoming.Status) {
 		merged.Status = incoming.Status
 	}
 	if incoming.Error != nil {
@@ -681,6 +681,27 @@ func mergeCodexTurn(existing, incoming codex.Turn) codex.Turn {
 		merged.Items = incoming.Items
 	}
 	return merged
+}
+
+func shouldMergeCodexTurnStatus(existing, incoming string) bool {
+	existing = strings.TrimSpace(existing)
+	incoming = strings.TrimSpace(incoming)
+	if incoming == "" {
+		return false
+	}
+	if isTerminalCodexTurnStatus(existing) && incoming == "inProgress" {
+		return false
+	}
+	return true
+}
+
+func isTerminalCodexTurnStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "completed", "interrupted", "failed", "cancelled", "canceled":
+		return true
+	default:
+		return false
+	}
 }
 
 func cloneCodexTurns(turns []codex.Turn) []codex.Turn {

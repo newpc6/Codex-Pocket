@@ -156,6 +156,9 @@ func TestMarkTurnInterruptedUpdatesLocalState(t *testing.T) {
 	if got := record.Thread.Turns[0].Status; got != "interrupted" {
 		t.Fatalf("turn status = %q, want interrupted", got)
 	}
+	if got := record.Thread.Status.Type; got != "idle" {
+		t.Fatalf("thread status = %q, want idle", got)
+	}
 	if record.Thread.Turns[0].Error == nil || record.Thread.Turns[0].Error.Message != "stopped" {
 		t.Fatalf("turn error = %#v, want stopped", record.Thread.Turns[0].Error)
 	}
@@ -189,6 +192,47 @@ func TestMarkTurnCompletedUpdatesLocalState(t *testing.T) {
 	}
 	if record.Thread.Turns[0].CompletedAt == nil || *record.Thread.Turns[0].CompletedAt <= 0 {
 		t.Fatalf("completedAt = %#v, want timestamp", record.Thread.Turns[0].CompletedAt)
+	}
+}
+
+func TestUpsertThreadDoesNotOverwriteTerminalTurnWithStaleInProgress(t *testing.T) {
+	sessionStore, err := New(nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID:     "thread-1",
+		Status: codex.ThreadStatus{Type: "active"},
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "inProgress"},
+		},
+	})
+	sessionStore.MarkTurnInterrupted("thread-1", "turn-1", "stopped")
+	sessionStore.UpsertThread(codex.Thread{
+		ID:     "thread-1",
+		Status: codex.ThreadStatus{Type: "active"},
+		Turns: []codex.Turn{
+			{
+				ID:     "turn-1",
+				Status: "inProgress",
+				Items:  []map[string]any{{"type": "agentMessage", "text": "stale history"}},
+			},
+		},
+	})
+
+	record, ok := sessionStore.SnapshotSession("thread-1")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing thread")
+	}
+	if got := record.Thread.Turns[0].Status; got != "interrupted" {
+		t.Fatalf("turn status = %q, want interrupted", got)
+	}
+	if record.Thread.Turns[0].Error == nil || record.Thread.Turns[0].Error.Message != "stopped" {
+		t.Fatalf("turn error = %#v, want stopped", record.Thread.Turns[0].Error)
+	}
+	if len(record.Thread.Turns[0].Items) != 1 {
+		t.Fatalf("turn items len = %d, want incoming items preserved", len(record.Thread.Turns[0].Items))
 	}
 }
 

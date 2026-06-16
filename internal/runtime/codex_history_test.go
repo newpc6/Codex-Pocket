@@ -84,3 +84,28 @@ func TestAppendStructuredUserInputAddsSteerMessage(t *testing.T) {
 		t.Fatalf("second user message = %q, want second", got)
 	}
 }
+
+func TestMergeCodexTurnKeepsLocalTerminalStatusOverStaleHistory(t *testing.T) {
+	merged := mergeCodexTurn(
+		codex.Turn{
+			ID:     "turn-1",
+			Status: "interrupted",
+			Error:  &codex.TurnError{Message: "interrupted by user"},
+		},
+		codex.Turn{
+			ID:     "turn-1",
+			Status: "inProgress",
+			Items:  []map[string]any{{"type": "agentMessage", "text": "stale history"}},
+		},
+	)
+
+	if got := merged.Status; got != "interrupted" {
+		t.Fatalf("merged.Status = %q, want interrupted", got)
+	}
+	if merged.Error == nil || merged.Error.Message != "interrupted by user" {
+		t.Fatalf("merged.Error = %#v, want interrupted by user", merged.Error)
+	}
+	if len(merged.Items) != 1 {
+		t.Fatalf("merged items len = %d, want 1", len(merged.Items))
+	}
+}
