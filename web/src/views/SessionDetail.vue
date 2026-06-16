@@ -286,6 +286,8 @@
                                 :initial-index="image.index"
                                 fit="cover"
                                 preview-teleported
+                                @load="handleMessageAssetLoad"
+                                @error="handleMessageAssetError"
                               />
                             </div>
                             <div v-if="itemText(processEntry.item)" class="markdown-body">
@@ -399,6 +401,8 @@
                             :initial-index="image.index"
                             fit="cover"
                             preview-teleported
+                            @load="handleMessageAssetLoad"
+                            @error="handleMessageAssetError"
                           />
                         </div>
                         <div v-if="itemText(entry.item)" class="markdown-body">
@@ -641,6 +645,7 @@ const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let liveSyncBusy = false
+let initialScrollDone = false
 
 const liveLeaseKey = `cf_live_session_lease:${sessionId}`
 const liveSnapshotKey = `cf_live_session_snapshot:${sessionId}`
@@ -1131,19 +1136,53 @@ function turnNumber(id: string) {
   return idx >= 0 ? idx + 1 : '?'
 }
 
+function setChatScrollToBottom(force = false) {
+  const el = chatAreaRef.value
+  if (!el) return
+  if (!force && !followLiveOutput.value) return
+  el.scrollTop = el.scrollHeight
+}
+
 function scrollChatToBottom(force = false) {
+  nextTick(() => {
+    setChatScrollToBottom(force)
+  })
+}
+
+async function scrollChatToBottomAfterLayout(force = false) {
+  await nextTick()
+  setChatScrollToBottom(force)
+  requestAnimationFrame(() => {
+    setChatScrollToBottom(force)
+    requestAnimationFrame(() => setChatScrollToBottom(force))
+  })
+  window.setTimeout(() => setChatScrollToBottom(force), 120)
+  window.setTimeout(() => setChatScrollToBottom(force), 360)
+}
+
+function handleMessageAssetLoad() {
+  if (followLiveOutput.value || !initialScrollDone) {
+    scrollChatToBottom(true)
+  }
+}
+
+function handleMessageAssetError() {
+  handleMessageAssetLoad()
+}
+
+function scrollInputIntoView() {
   nextTick(() => {
     const el = chatAreaRef.value
     if (!el) return
-    if (!force && !followLiveOutput.value) return
-    el.scrollTop = el.scrollHeight
+    const input = document.querySelector('.session-detail-page .input-area')
+    input?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   })
 }
 
 function jumpToLatest() {
   followLiveOutput.value = true
   pendingNewMessages.value = 0
-  scrollChatToBottom(true)
+  scrollChatToBottomAfterLayout(true)
 }
 
 async function onChatScroll() {
@@ -1164,7 +1203,7 @@ watch(orderedTurns, (next, prev) => {
   const nextLast = next?.[next.length - 1]
   const latestChanged = !prevLast || !nextLast || prevLast.id !== nextLast.id || JSON.stringify(prevLast.items) !== JSON.stringify(nextLast.items)
   if (latestChanged && followLiveOutput.value) {
-    scrollChatToBottom(true)
+    scrollChatToBottomAfterLayout(true)
     pendingNewMessages.value = 0
   } else if (latestChanged) {
     pendingNewMessages.value += 1
@@ -1652,15 +1691,13 @@ onMounted(async () => {
   elapsedTimer = setInterval(() => {
     elapsedNow.value = Date.now()
   }, 1000)
-  scrollChatToBottom(true)
+  await scrollChatToBottomAfterLayout(true)
+  initialScrollDone = true
 })
 
-watch(summary, (next) => {
-  if (!next?.loaded || !isMobile.value) return
-  nextTick(() => {
-    const input = document.querySelector('.session-detail-page .input-area')
-    input?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  })
+watch(() => summary.value?.loaded, (next, prev) => {
+  if (!next || !isMobile.value || prev === undefined || next === prev) return
+  scrollInputIntoView()
 })
 
 onUnmounted(() => {
