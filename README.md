@@ -1,95 +1,120 @@
 # CodexFlow
 
-CodexFlow 是一个面向 Codex CLI / Codex app-server 的 Web 控制台。
+CodexFlow 是一个运行在 Codex 所在电脑上的 Web 控制台。它把本机 Codex / Claude 会话整理成浏览器和手机都能使用的控制界面，让你可以远程查看实时消息、接管会话、继续下指令、处理中断和审批。
 
-它的目标不是“远程看终端”，而是把 Codex 的会话、turn、diff、审批、状态流，整理成一套可以在浏览器中管理和继续指挥的控制平面。
+它不是一个简单的终端转发页面，而是围绕 Codex app-server 的会话、turn、工具调用、文件变更、图片、审批和状态流做了一层可视化控制平面。
 
-当前仓库包含两部分：
+## 界面预览
 
-- `Go Agent`：运行在安装了 Codex 的电脑上，负责接入 `codex app-server`、维护会话状态并暴露 HTTP/SSE API。
-- `Web Console`：浏览器控制台，负责会话管理、实时消息、审批、继续对话和设置。
+### 会话总览
 
-## 工作原理
+![会话总览](assets/screenshots/01-dashboard.jpg)
 
-CodexFlow 直接接在 `codex app-server` 之上，通过结构化 JSON-RPC 协议拿到真实的会话和执行状态，再转成 Web 端消费的 API。
+### 会话详情
+
+![会话详情](assets/screenshots/02-session-detail.jpg)
+
+### 工作目录选择
+
+![工作目录选择](assets/screenshots/03-directory-picker.jpg)
+
+### 审批中心
+
+![审批中心](assets/screenshots/04-approvals.jpg)
+
+### 移动端会话
+
+<img src="assets/screenshots/05-mobile-session.jpg" alt="移动端会话" width="360">
+
+## 核心特性
+
+- **会话管理**：自动发现本机 Codex 历史会话，按工作目录分组展示，支持搜索、状态筛选和生命周期筛选。
+- **移动端可用**：Web Console 做了响应式布局，可以在手机浏览器里查看会话、发送指令、接管、取消接管和中断任务。
+- **远程接管**：对未接管会话可以一键接管；接管后 CodexFlow 可以继续发送消息、追加 steer、interrupt 当前 turn，并可取消接管回到发现状态。
+- **实时消息**：通过 SSE 和轻量本地 transcript 同步追踪正在运行的会话，尽量贴近 Codex 客户端里的实时输出节奏。
+- **Markdown 渲染**：用户消息和助手消息使用 Markdown 展示，代码、列表、链接、行内代码等内容保持可读。
+- **图片展示**：用户输入和助手输出里的图片会以横向缩略图展示，点击可放大预览，适合手机端查看截图上下文。
+- **工具调用展示**：工具消息默认折叠，`shell_command` 会直接展示命令 tag，展开后可查看原始 JSON 和输出。
+- **过程折叠**：会话中的中间步骤、连续命令、正在思考、上下文压缩等过程信息会合并成轻量状态，避免刷屏。
+- **文件变更**：会话结束后展示本轮修改过的文件、增删行统计和变更摘要，方便快速进入审核。
+- **审批中心**：集中处理命令、文件变更、权限和用户输入类审批请求。
+- **工作目录选择器**：新建会话时可以直接浏览 Codex 所在电脑上的目录，不需要手动输入路径。
+- **多标签页协作**：多个浏览器标签同时打开时，会通过前端 lease 和广播机制降低重复轮询，减少后端压力。
+- **多 Agent 接入**：当前支持 Codex app-server，并保留 Claude Code 会话发现和运行时接入能力。
+
+## 架构
 
 ```text
 Codex CLI / codex app-server
-        │
-        │ JSON-RPC over stdio
-        ▼
+        |
+        | JSON-RPC over stdio
+        v
 Go Agent
-  - 启动并持有本地 codex app-server
-  - 发现已有 session / loaded session
-  - 接收通知、diff、plan、审批请求
-  - 暴露 HTTP API + SSE
-        │
-        │ HTTP / SSE
-        ▼
+  - 启动并持有本机 codex app-server
+  - 发现和接管会话
+  - 同步 turn、工具、diff、审批和目标状态
+  - 暴露 HTTP API、SSE 和静态 Web 资源
+        |
+        | HTTP / SSE
+        v
 Web Console
-  - 会话总览 / 会话详情
-  - 实时消息 / Markdown / 图片
+  - 会话总览
+  - 会话详情
+  - 实时消息
   - 审批中心
-  - 继续下一步 / steer / interrupt
+  - 设置和移动端控制
 ```
-
-## 当前功能
-
-- 自动发现真实的 Codex 历史会话。
-- 支持新建、接管、取消接管、结束和归档会话。
-- 支持开始新 turn、steer 当前 turn、interrupt 当前 turn。
-- 支持 Codex 消息流、工具调用、命令输出、图片和 Markdown 展示。
-- 捕获命令审批、文件变更审批、权限审批、结构化用户输入请求。
-- 提供工作目录选择器，目录浏览发生在运行 Agent 的电脑上。
-- 支持 Claude Code 历史与 runtime 接入。
-- 对外提供 HTTP API 和 SSE 事件流。
 
 ## 快速开始
 
 ### 环境要求
 
-- Windows / Linux / macOS
-- 已安装并可用的 `codex` CLI
-- 已完成 Codex 登录
+- 已安装并登录 `codex` CLI
 - Go 1.26+
-- Node.js / npm（开发 Web Console 时需要）
+- Node.js / npm
+- Windows、macOS 或 Linux
 
-### 启动 Go Agent
+### 后端 Agent
 
-在仓库根目录执行：
+开发运行：
 
 ```bash
 go run ./cmd/codexflow-agent
 ```
 
-默认监听地址：
-
-```text
-127.0.0.1:7318
-```
-
-可选环境变量：
-
-- `CODEXFLOW_LISTEN_ADDR`
-- `CODEXFLOW_CODEX_PATH`
-- `CODEXFLOW_REFRESH_INTERVAL`
-- `CODEXFLOW_STATE_DB_PATH`
-- `CODEXFLOW_WEB_DIST_PATH`
-
-如果你的 `codex` 不在系统 `PATH` 里，可以显式指定：
+构建单文件后端：
 
 ```bash
-CODEXFLOW_CODEX_PATH=/path/to/codex go run ./cmd/codexflow-agent
+go build -o codexflow-agent.exe ./cmd/codexflow-agent
+```
+
+默认后端监听：
+
+```text
+0.0.0.0:7318
+```
+
+常用环境变量：
+
+```text
+CODEXFLOW_LISTEN_ADDR       后端监听地址
+CODEXFLOW_CODEX_PATH        codex 可执行文件路径
+CODEXFLOW_CLAUDE_PATH       claude 可执行文件路径
+CODEXFLOW_JWT_SECRET        JWT 签名密钥
+CODEXFLOW_REFRESH_INTERVAL  后台刷新间隔，例如 12s
+CODEXFLOW_STATE_DB_PATH     本地状态数据库路径
+CODEXFLOW_WEB_DIST_PATH     Web Console dist 目录
+CODEXFLOW_ALLOWED_ORIGINS   允许访问 API 的来源
 ```
 
 Windows 示例：
 
 ```powershell
-$env:CODEXFLOW_CODEX_PATH="C:\path\to\codex.exe"
+$env:CODEXFLOW_CODEX_PATH = "C:\path\to\codex.exe"
 go run ./cmd/codexflow-agent
 ```
 
-### 启动 Web Console
+### Web Console
 
 开发模式：
 
@@ -99,70 +124,103 @@ npm install
 npm run dev
 ```
 
-构建：
+开发服务器默认运行在：
+
+```text
+http://localhost:7319
+```
+
+`vite` 会把 `/api` 请求代理到后端 `http://127.0.0.1:7318`。
+
+生产构建：
 
 ```bash
 cd web
 npm run build
 ```
 
-构建产物默认输出到仓库根目录的 `dist/`，可通过 `CODEXFLOW_WEB_DIST_PATH` 交给 Go Agent 托管。
-
-### 验证 Agent
-
-```bash
-curl http://127.0.0.1:7318/healthz
-curl http://127.0.0.1:7318/api/v1/dashboard
-```
+构建产物输出到仓库根目录 `dist/`。后端启动时如果在可执行文件同级发现 `dist/`，会自动托管 Web Console。
 
 ## 基本使用
 
-1. 打开 Web Console 的“会话”页面，查看当前真实会话。
-2. 对历史会话点击“接管”，将其转为 CodexFlow 受控会话。
-3. 在会话详情页查看消息流、工具调用、文件变更和审批请求。
-4. 在底部输入框继续发送指令；如果当前 turn 正在运行，会以 steer 方式追加输入。
-5. 对正在执行的 turn，可以直接中断。
-6. 打开“审批”页面处理等待中的审批请求。
+1. 启动后端 Agent，并确认 Codex CLI 已经登录。
+2. 启动 Web Console，打开 `http://localhost:7319`。
+3. 使用配置中的账号登录，默认开发账号为 `admin / admin123`。
+4. 在“会话”页面查看按工作目录分组的会话列表。
+5. 点击某个会话进入详情页，查看历史消息、图片、工具调用和文件变更。
+6. 对未接管会话点击“接管会话”，接管后即可继续发送指令。
+7. 会话运行中可以追加指令、查看实时输出、处理中断或审批请求。
+
+## 主要页面
+
+- **会话总览**：统计总会话、已接管、运行中、待审批，并按工作目录展示会话。
+- **会话详情**：展示当前会话头、接管状态、turn 时间线、实时消息、工具调用、图片和文件变更。
+- **审批中心**：集中处理 Codex/Claude 请求的命令、文件、权限和用户输入审批。
+- **设置页**：查看 Agent 状态、监听地址、Codex 路径、运行时能力和登录信息。
 
 ## API 概览
 
-- `GET /healthz`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/dashboard`
-- `GET /api/v1/directories`
-- `GET /api/v1/sessions`
-- `POST /api/v1/sessions`
-- `GET /api/v1/sessions/:id`
-- `POST /api/v1/sessions/:id/resume`
-- `POST /api/v1/sessions/:id/detach`
-- `POST /api/v1/sessions/:id/end`
-- `POST /api/v1/sessions/:id/archive`
-- `POST /api/v1/sessions/:id/rename`
-- `POST /api/v1/sessions/:id/fork`
-- `POST /api/v1/sessions/:id/compact`
-- `POST /api/v1/sessions/:id/rollback`
-- `POST /api/v1/sessions/:id/turns/start`
-- `POST /api/v1/sessions/:id/turns/steer`
-- `POST /api/v1/sessions/:id/turns/interrupt`
-- `GET /api/v1/approvals`
-- `POST /api/v1/approvals/:id/resolve`
-- `POST /api/v1/uploads/image`
-- `GET /api/v1/assets/local-image`
-- `GET /api/v1/events`
+常用接口：
+
+```text
+GET    /healthz
+POST   /api/v1/auth/login
+GET    /api/v1/dashboard
+GET    /api/v1/directories
+GET    /api/v1/sessions
+POST   /api/v1/sessions
+GET    /api/v1/sessions/:id
+POST   /api/v1/sessions/:id/resume
+POST   /api/v1/sessions/:id/detach
+POST   /api/v1/sessions/:id/end
+POST   /api/v1/sessions/:id/archive
+POST   /api/v1/sessions/:id/rename
+POST   /api/v1/sessions/:id/fork
+POST   /api/v1/sessions/:id/compact
+POST   /api/v1/sessions/:id/rollback
+GET    /api/v1/sessions/:id/goal
+POST   /api/v1/sessions/:id/goal
+DELETE /api/v1/sessions/:id/goal
+POST   /api/v1/sessions/:id/turns/start
+POST   /api/v1/sessions/:id/turns/steer
+POST   /api/v1/sessions/:id/turns/interrupt
+GET    /api/v1/approvals
+POST   /api/v1/approvals/:id/resolve
+POST   /api/v1/uploads/image
+GET    /api/v1/assets/local-image
+GET    /api/v1/events
+```
+
+## 安全建议
+
+CodexFlow 可以控制运行 Agent 的电脑执行 Codex 操作，请按本机自动化工具来对待：
+
+- 不要把默认账号密码暴露到公网。
+- 部署到局域网或远程访问时，请修改 `CODEXFLOW_JWT_SECRET` 和登录账号。
+- 建议配合反向代理、HTTPS、访问控制或 VPN 使用。
+- 不要提交 `codexflow.yaml`、数据库、构建产物、exe 等本地文件；README 截图请放在 `assets/screenshots/` 并压缩后再入库。
+
+## 开发验证
+
+常用检查命令：
+
+```bash
+go test ./...
+cd web && npm run build
+git diff --check
+```
+
+开发时前端使用 `npm run dev` 热更新；后端仍是 Go 单进程服务，修改后需要重新运行或配合 `air`、`watchexec` 等工具自动重启。
 
 ## 仓库结构
 
 ```text
-cmd/codexflow-agent        Go Agent 启动入口
-internal/codex             Codex app-server 协议适配
-internal/runtime           会话管理、统计、审批编排
-internal/httpapi           HTTP API 与 SSE
-internal/store             本地状态存储
-web                        Web Console
-docs                       架构与路线文档
-assets                     README 截图资源
+cmd/codexflow-agent   Go Agent 启动入口
+internal/codex        Codex app-server JSON-RPC 适配
+internal/runtime      会话、turn、审批、状态和多 Agent 编排
+internal/httpapi      HTTP API、SSE、认证和资源访问
+internal/store        本地状态存储
+web                   Vue 3 Web Console
+docs                  架构、生命周期和路线文档
+scripts               辅助脚本
 ```
-
-## 开发建议
-
-Go 后端适合当前项目的本机常驻服务和单二进制分发。开发期如果觉得重启麻烦，建议后续加入 `air`、`watchexec` 或 PowerShell watch 脚本做自动重编译重启，而不是改成 Python 后端。
