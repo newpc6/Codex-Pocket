@@ -338,14 +338,14 @@ async function handleLogin() {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    background: linear-gradient(180deg, #2167d9 0%, #3388ff 50%, #f5f7fb 100%);
+    background: linear-gradient(180deg, #2167d9 0%, #3388ff 35%, #f5f7fb 100%);
   }
 
   .login-left {
     flex: 0 0 auto;
     min-height: auto;
     display: block;
-    padding: 36px 24px 96px;
+    padding: 40px 24px 36px;
     background: transparent;
     box-shadow: none;
   }
@@ -364,13 +364,13 @@ async function handleLogin() {
   .brand-lockup {
     justify-content: center;
     gap: 14px;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
   }
 
   .logo-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
     box-shadow: 0 12px 28px rgba(8, 28, 72, 0.24);
   }
 
@@ -381,7 +381,7 @@ async function handleLogin() {
   }
 
   .left-title {
-    font-size: 30px;
+    font-size: 28px;
     line-height: 1.1;
   }
 
@@ -402,12 +402,13 @@ async function handleLogin() {
   }
 
   .login-right {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    align-items: flex-start;
-    margin-top: -72px;
-    padding: 0 18px 32px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 20px 18px 48px;
     border-left: none;
     background: transparent;
   }
@@ -484,8 +485,7 @@ async function handleLogin() {
   }
 
   .login-right {
-    margin-top: -28px;
-    padding: 0 16px 28px;
+    padding: 16px 16px 36px;
   }
 
   .login-shell {
@@ -502,11 +502,11 @@ async function handleLogin() {
 
 @media (max-width: 480px) {
   .v-login {
-    background: linear-gradient(180deg, #2167d9 0%, #2f80f6 45%, #f5f7fb 100%);
+    background: linear-gradient(180deg, #2167d9 0%, #2f80f6 32%, #f5f7fb 100%);
   }
 
   .login-left {
-    padding: 28px 18px 80px;
+    padding: 28px 18px 28px;
   }
 
   .logo-icon {
@@ -531,8 +531,7 @@ async function handleLogin() {
   }
 
   .login-right {
-    margin-top: -60px;
-    padding: 0 14px 24px;
+    padding: 16px 14px 32px;
   }
 
   .login-shell {
