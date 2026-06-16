@@ -1282,7 +1282,8 @@ function turnChangedFiles(turn: Turn): DiffFileSummary[] {
     byPath.set(file.path, { ...file })
   }
   for (const item of turn.items || []) {
-    if (item.type === 'userMessage' || item.type === 'agentMessage') continue
+    if (item.type === 'userMessage') continue
+    if (item.type === 'agentMessage' && !agentMessageHasChangeSummary(item)) continue
     for (const file of fileChangesFromItem(item)) {
       const existing = byPath.get(file.path)
       if (existing) {
@@ -1294,6 +1295,21 @@ function turnChangedFiles(turn: Turn): DiffFileSummary[] {
     }
   }
   return filterDisplayChangedFiles(Array.from(byPath.values()))
+}
+
+function agentMessageHasChangeSummary(item: TurnItem): boolean {
+  const raw = `${item.title || ''}\n${item.body || ''}\n${item.auxiliary || ''}`.toLowerCase()
+  return [
+    '已编辑',
+    '文件已更改',
+    '文件变更',
+    '代码变更',
+    '代码修改',
+    '提交:',
+    '提交：',
+    'commit',
+    'git diff',
+  ].some((needle) => raw.includes(needle.toLowerCase()))
 }
 
 function fileChangesFromItem(item: TurnItem): DiffFileSummary[] {
@@ -1319,6 +1335,9 @@ function fileChangesFromItem(item: TurnItem): DiffFileSummary[] {
 function extractChangedPathFromLine(line: string): string {
   const trimmed = line.trim()
   if (!trimmed) return ''
+
+  const codexCardMatch = trimmed.match(/^(.+?)\s+([+-]\d+)\s+([+-]\d+)$/)
+  if (codexCardMatch) return normalizeChangedPath(codexCardMatch[1])
 
   const diffMatch = trimmed.match(/^diff --git a\/(.+?) b\/(.+)$/)
   if (diffMatch) return normalizeChangedPath(diffMatch[2] || diffMatch[1])

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -238,6 +239,7 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 	if err := a.refreshCodexThreadFromHistory(&record); err == nil {
 		a.store.UpsertThread(record.Thread)
 		a.reconcileInactiveCodexTurn(threadID, !runtimeActive)
+		a.backfillCommitDiffs(ctx, threadID)
 		record, _ = a.store.SnapshotSession(threadID)
 	}
 
@@ -1241,6 +1243,58 @@ func (a *Agent) completeStaleCodexTurn(threadID, turnID string) {
 		a.store.MarkTurnCompleted(threadID, turn.ID)
 		return
 	}
+}
+
+var commitHashPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{7,40}\b`)
+
+func (a *Agent) backfillCommitDiffs(ctx context.Context, threadID string) {
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok || isClaudeThreadID(threadID) {
+		return
+	}
+	cwd := strings.TrimSpace(record.Thread.CWD)
+	if cwd == "" {
+		return
+	}
+	if err := ensureGitWorktree(ctx, cwd); err != nil {
+		return
+	}
+	for _, turn := range record.Thread.Turns {
+		if strings.TrimSpace(record.Runtime.LatestDiffByTurn[turn.ID]) != "" {
+			continue
+		}
+		commit := commitHashFromTurn(turn)
+		if commit == "" {
+			continue
+		}
+		diff, err := runGit(ctx, cwd, "diff", "--no-ext-diff", "--find-renames", commit+"^", commit)
+		if err != nil || strings.TrimSpace(diff) == "" {
+			continue
+		}
+		a.store.RecordDiff(threadID, turn.ID, diff)
+	}
+}
+
+func commitHashFromTurn(turn codex.Turn) string {
+	for i := len(turn.Items) - 1; i >= 0; i-- {
+		item := turn.Items[i]
+		if itemType, _ := item["type"].(string); itemType != "agentMessage" {
+			continue
+		}
+		text := strings.TrimSpace(stringValue(item["text"]))
+		if text == "" {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(text), "commit") && !strings.Contains(text, "提交") {
+			continue
+		}
+		matches := commitHashPattern.FindAllString(text, -1)
+		if len(matches) == 0 {
+			continue
+		}
+		return matches[len(matches)-1]
+	}
+	return ""
 }
 
 func (a *Agent) consumeNotifications(ctx context.Context) {
