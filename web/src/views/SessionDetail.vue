@@ -2436,13 +2436,18 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .hero-name {
+  min-width: 0;
   font-size: 18px;
   line-height: 1.1;
   font-weight: 700;
   color: var(--cf-text-heavy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero-meta-row {
@@ -2465,6 +2470,7 @@ onUnmounted(() => {
 }
 
 .hero-tags {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2475,6 +2481,7 @@ onUnmounted(() => {
 .hero-pill {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   min-height: 20px;
   padding: 0 7px;
   border-radius: 999px;
@@ -2482,6 +2489,9 @@ onUnmounted(() => {
   color: var(--cf-primary-dark);
   font-size: 11px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero-pill.is-active {
@@ -3839,28 +3849,95 @@ onUnmounted(() => {
   margin: 0 10px 8px;
   padding: 8px 10px;
   border-radius: 12px;
+  overflow: hidden;
 }
 
-.session-detail-page.is-mobile .hero-top,
+.session-detail-page.is-mobile .hero-top {
+  align-items: center;
+}
+
 .session-detail-page.is-mobile .hero-main {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.session-detail-page.is-mobile .hero-title-group {
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.session-detail-page.is-mobile .hero-name-row {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.session-detail-page.is-mobile .hero-name-row :deep(.el-tag),
+.session-detail-page.is-mobile .live-indicator {
+  flex: 0 0 auto;
+}
+
+.session-detail-page.is-mobile .hero-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.session-detail-page.is-mobile .hero-tags {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.session-detail-page.is-mobile .hero-cwd {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  order: 0;
 }
 
 .session-detail-page.is-mobile .hero-status-card {
   flex-direction: row;
   align-items: stretch;
   min-width: 0;
+  max-width: 100%;
   padding: 7px 9px;
 }
 
 .session-detail-page.is-mobile .hero-primary-actions {
+  flex: 0 0 auto;
   justify-content: flex-start;
   flex-wrap: wrap;
 }
 
+.session-detail-page.is-mobile .hero-status-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.session-detail-page.is-mobile .hero-status-value,
+.session-detail-page.is-mobile .hero-status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-detail-page.is-mobile .hero-name {
+  max-width: 100%;
   font-size: 18px;
 }
 
