@@ -123,6 +123,7 @@ export interface SessionChanges {
   scope: string
   ref: string
   base: string
+  turnId?: string
   cwd: string
   summary: {
     files: number
@@ -643,7 +644,7 @@ export const useAppStore = defineStore('app', () => {
     return dashboard.value.options
   }
 
-  async function loadSessionChanges(sessionId: string, params?: { scope?: string; ref?: string; base?: string; file?: string }) {
+  async function loadSessionChanges(sessionId: string, params?: { scope?: string; ref?: string; base?: string; turnId?: string; file?: string }) {
     const res = await api.get<SessionChanges>(`/sessions/${sessionId}/changes`, { params })
     return res.data
   }
@@ -655,7 +656,7 @@ export const useAppStore = defineStore('app', () => {
     return res.data
   }
 
-  async function startReview(sessionId: string, params?: { scope?: string; ref?: string; base?: string }) {
+  async function startReview(sessionId: string, params?: { scope?: string; ref?: string; base?: string; turnId?: string }) {
     const res = await api.post<Turn>(`/sessions/${sessionId}/review`, params || {})
     if (res.data?.id) {
       appendLocalUserInput(sessionId, res.data.id, [{ type: 'text', text: '审查改动' }])

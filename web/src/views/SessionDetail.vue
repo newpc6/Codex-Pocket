@@ -489,7 +489,7 @@
                     :key="`${turn.id}-${file.path}`"
                     type="button"
                     class="turn-change-row"
-                    @click="openTurnChangedFile(file.path)"
+                    @click="openTurnChangedFile(turn, file.path)"
                   >
                     <span class="changed-file-path">{{ file.path }}</span>
                     <span class="changed-file-stats">
@@ -538,7 +538,8 @@
     >
       <div class="changes-panel">
         <div class="change-scope-bar">
-          <el-segmented v-model="changeScope" :options="changeScopeOptions" @change="reloadChanges" />
+          <div v-if="changeScope === 'turn'" class="turn-scope-chip">本轮改动</div>
+          <el-segmented v-else v-model="changeScope" :options="changeScopeOptions" @change="reloadChanges" />
           <el-input
             v-if="changeScope === 'commit'"
             v-model="changeRef"
@@ -627,7 +628,10 @@
       :close-on-click-modal="false"
     >
       <el-form label-width="82px">
-        <el-form-item label="范围">
+        <el-form-item v-if="reviewScope === 'turn'" label="范围">
+          <div class="turn-scope-chip">本轮改动</div>
+        </el-form-item>
+        <el-form-item v-else label="范围">
           <el-segmented v-model="reviewScope" :options="changeScopeOptions" @change="reloadReviewPreview" />
         </el-form-item>
         <el-form-item v-if="reviewScope === 'commit'" label="Commit">
@@ -782,11 +786,13 @@ const selectedChangeFile = ref('')
 const changeScope = ref('workspace')
 const changeRef = ref('')
 const changeBase = ref('main')
+const activeTurnChangeId = ref('')
 const fileViewMode = ref<'diff' | 'content'>('diff')
 const reviewDialogOpen = ref(false)
 const reviewScope = ref('workspace')
 const reviewRef = ref('')
 const reviewBase = ref('main')
+const activeReviewTurnId = ref('')
 const reviewPreview = ref<SessionChanges | null>(null)
 const reviewPreviewLoading = ref(false)
 const reviewPreviewError = ref('')
@@ -1023,7 +1029,7 @@ function shouldRenderProcessInEntry(turn: Turn, entry: TurnItemEntry): boolean {
 function hasTurnProcessContent(turn: Turn): boolean {
   return turnProcessSummaryItems(turn).length > 0
     || turnProcessFileEditSummary(turn).files.length > 0
-    || shouldShowInlineLiveStatus(turn)
+    || hasInlineLiveStatus(turn)
 }
 
 function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
@@ -1205,7 +1211,16 @@ function shouldShowTurnActivity(turn: Turn): boolean {
 function shouldShowInlineLiveStatus(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
   if (turnProcessFileEditSummary(turn).files.length > 0) return false
-  return runningTurn.value?.id === turn.id && turnVisibleEntries(turn).length > 0
+  return hasInlineLiveStatus(turn) && turnHasVisibleHost(turn)
+}
+
+function hasInlineLiveStatus(turn: Turn): boolean {
+  return turn.status === 'inProgress' && runningTurn.value?.id === turn.id
+}
+
+function turnHasVisibleHost(turn: Turn): boolean {
+  if (finalAgentEntry(turn)) return true
+  return turnItemEntries(turn).some((entry) => entry.item.type === 'userMessage' && !isInjectedUserMessage(entry.item))
 }
 
 function isEditingFiles(turn: Turn): boolean {
@@ -1665,6 +1680,7 @@ function changeQuery(scope = changeScope.value) {
     scope,
     ref: scope === 'commit' ? changeRef.value.trim() : '',
     base: scope === 'base' ? changeBase.value.trim() : '',
+    turnId: scope === 'turn' ? activeTurnChangeId.value : '',
   }
 }
 
@@ -1673,10 +1689,13 @@ function reviewQuery(scope = reviewScope.value) {
     scope,
     ref: scope === 'commit' ? reviewRef.value.trim() : '',
     base: scope === 'base' ? reviewBase.value.trim() : '',
+    turnId: scope === 'turn' ? activeReviewTurnId.value : '',
   }
 }
 
 async function openChangesDrawer() {
+  activeTurnChangeId.value = ''
+  changeScope.value = 'workspace'
   changesDrawerOpen.value = true
   await reloadChanges()
 }
@@ -1714,8 +1733,9 @@ async function selectChangedFile(path: string) {
   }
 }
 
-async function openTurnChangedFile(path: string) {
-  changeScope.value = 'workspace'
+async function openTurnChangedFile(turn: Turn, path: string) {
+  activeTurnChangeId.value = turn.id
+  changeScope.value = 'turn'
   changesDrawerOpen.value = true
   await reloadChanges()
   if (path) {
@@ -1723,8 +1743,9 @@ async function openTurnChangedFile(path: string) {
   }
 }
 
-function reviewTurnChanges(_turn: Turn) {
-  reviewScope.value = 'workspace'
+function reviewTurnChanges(turn: Turn) {
+  activeReviewTurnId.value = turn.id
+  reviewScope.value = 'turn'
   reviewRef.value = ''
   reviewBase.value = changeBase.value || 'main'
   reviewDialogOpen.value = true
@@ -1763,7 +1784,9 @@ async function revertTurnChanges(turn: Turn) {
 }
 
 function openReviewDialog() {
+  activeReviewTurnId.value = ''
   reviewScope.value = changeScope.value
+  if (reviewScope.value === 'turn') reviewScope.value = 'workspace'
   reviewRef.value = changeRef.value
   reviewBase.value = changeBase.value
   reviewDialogOpen.value = true
@@ -1834,6 +1857,7 @@ async function handleStartReview() {
       scope: reviewScope.value,
       ref: reviewScope.value === 'commit' ? reviewRef.value.trim() : '',
       base: reviewScope.value === 'base' ? reviewBase.value.trim() : '',
+      turnId: reviewScope.value === 'turn' ? activeReviewTurnId.value : '',
     })
     reviewDialogOpen.value = false
     followLiveOutput.value = true
@@ -3278,6 +3302,20 @@ onUnmounted(() => {
 
 .change-scope-bar :deep(.el-input) {
   grid-column: 1 / -1;
+}
+
+.turn-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(151, 194, 255, 0.95);
+  border-radius: 6px;
+  background: #eef5ff;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .changes-summary-row {

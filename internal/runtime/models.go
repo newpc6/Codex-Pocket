@@ -196,12 +196,14 @@ const (
 	ChangeScopeWorkspace ChangeScope = "workspace"
 	ChangeScopeCommit    ChangeScope = "commit"
 	ChangeScopeBase      ChangeScope = "base"
+	ChangeScopeTurn      ChangeScope = "turn"
 )
 
 type SessionChanges struct {
 	Scope     ChangeScope        `json:"scope"`
 	Ref       string             `json:"ref"`
 	Base      string             `json:"base"`
+	TurnID    string             `json:"turnId,omitempty"`
 	CWD       string             `json:"cwd"`
 	Summary   ChangeSummary      `json:"summary"`
 	Files     []ChangedFile      `json:"files"`
@@ -237,9 +239,10 @@ type ChangedFileDetail struct {
 }
 
 type ReviewStartRequest struct {
-	Scope ChangeScope `json:"scope"`
-	Ref   string      `json:"ref"`
-	Base  string      `json:"base"`
+	Scope  ChangeScope `json:"scope"`
+	Ref    string      `json:"ref"`
+	Base   string      `json:"base"`
+	TurnID string      `json:"turnId,omitempty"`
 }
 
 type RevertChangesRequest struct {

@@ -497,6 +497,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			runtime.ChangeScope(strings.TrimSpace(r.URL.Query().Get("scope"))),
 			r.URL.Query().Get("ref"),
 			r.URL.Query().Get("base"),
+			r.URL.Query().Get("turnId"),
 			r.URL.Query().Get("file"),
 		)
 		if err != nil {

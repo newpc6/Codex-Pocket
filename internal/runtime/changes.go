@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"codexpocket/internal/codex"
+	"codexpocket/internal/store"
 )
 
 const maxChangedFileContentBytes = 240 * 1024
@@ -157,7 +158,7 @@ func defaultSessionPresets() []SessionPreset {
 	}
 }
 
-func (a *Agent) SessionChanges(ctx context.Context, threadID string, scope ChangeScope, ref, base, filePath string) (SessionChanges, error) {
+func (a *Agent) SessionChanges(ctx context.Context, threadID string, scope ChangeScope, ref, base, turnID, filePath string) (SessionChanges, error) {
 	record, ok := a.store.SnapshotSession(threadID)
 	if !ok {
 		return SessionChanges{}, errors.New("session not found")
@@ -169,6 +170,9 @@ func (a *Agent) SessionChanges(ctx context.Context, threadID string, scope Chang
 	scope = normalizeChangeScope(scope)
 	if scope == ChangeScopeCommit && strings.TrimSpace(ref) == "" {
 		return emptySessionChanges(scope, ref, base, cwd), nil
+	}
+	if scope == ChangeScopeTurn {
+		return readTurnChanges(ctx, cwd, record, turnID, filePath)
 	}
 	return readGitChanges(ctx, cwd, scope, ref, base, filePath)
 }
@@ -219,18 +223,65 @@ func emptySessionChanges(scope ChangeScope, ref, base, cwd string) SessionChange
 	}
 }
 
+func readTurnChanges(ctx context.Context, cwd string, record store.SessionRecord, turnID, filePath string) (SessionChanges, error) {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return SessionChanges{}, errors.New("turn id is required")
+	}
+	diff := ""
+	for _, turn := range toSessionDetail(record, 0).Turns {
+		if turn.ID != turnID {
+			continue
+		}
+		diff = turn.Diff
+		break
+	}
+	if strings.TrimSpace(diff) == "" {
+		return SessionChanges{
+			Scope:     ChangeScopeTurn,
+			TurnID:    turnID,
+			CWD:       cwd,
+			Files:     []ChangedFile{},
+			Diff:      "",
+			Generated: time.Now().UnixMilli(),
+		}, nil
+	}
+
+	fileDiff := diff
+	if strings.TrimSpace(filePath) != "" {
+		fileDiff = extractFileDiff(diff, filePath)
+	}
+	files := filterChangedFiles(ctx, cwd, parseDiffFiles(fileDiff))
+	result := SessionChanges{
+		Scope:     ChangeScopeTurn,
+		TurnID:    turnID,
+		CWD:       cwd,
+		Files:     files,
+		Diff:      fileDiff,
+		Generated: time.Now().UnixMilli(),
+	}
+	result.Summary = summarizeChanges(files)
+	if strings.TrimSpace(filePath) != "" {
+		detail := buildChangedFileDetail(ctx, cwd, filePath, fileDiff, files)
+		result.File = &detail
+	}
+	return result, nil
+}
+
 func (a *Agent) StartReview(ctx context.Context, threadID string, req ReviewStartRequest) (TurnDetail, error) {
 	if isClaudeThreadID(threadID) {
 		return TurnDetail{}, errors.New("review is not supported for claude sessions")
 	}
 	scope := normalizeChangeScope(req.Scope)
-	if turn, err := a.startNativeReview(ctx, threadID, scope, req.Ref, req.Base); err == nil {
-		return turn, nil
-	} else {
-		a.logger.Debug("native review/start failed, falling back to prompt review", "threadId", threadID, "error", err)
+	if scope != ChangeScopeTurn {
+		if turn, err := a.startNativeReview(ctx, threadID, scope, req.Ref, req.Base); err == nil {
+			return turn, nil
+		} else {
+			a.logger.Debug("native review/start failed, falling back to prompt review", "threadId", threadID, "error", err)
+		}
 	}
 
-	changes, err := a.SessionChanges(ctx, threadID, scope, req.Ref, req.Base, "")
+	changes, err := a.SessionChanges(ctx, threadID, scope, req.Ref, req.Base, req.TurnID, "")
 	if err != nil {
 		return TurnDetail{}, err
 	}
@@ -359,6 +410,8 @@ func buildReviewPrompt(changes SessionChanges) string {
 		target = "commit " + strings.TrimSpace(changes.Ref)
 	case ChangeScopeBase:
 		target = "相对 base branch " + strings.TrimSpace(changes.Base)
+	case ChangeScopeTurn:
+		target = "本轮会话 " + strings.TrimSpace(changes.TurnID)
 	}
 	if strings.TrimSpace(target) == "" {
 		target = "当前改动"
@@ -447,7 +500,7 @@ func readGitChanges(ctx context.Context, cwd string, scope ChangeScope, ref, bas
 
 func normalizeChangeScope(scope ChangeScope) ChangeScope {
 	switch scope {
-	case ChangeScopeCommit, ChangeScopeBase, ChangeScopeWorkspace:
+	case ChangeScopeCommit, ChangeScopeBase, ChangeScopeWorkspace, ChangeScopeTurn:
 		return scope
 	default:
 		return ChangeScopeWorkspace
@@ -535,6 +588,70 @@ func parseNumstat(output string) []ChangedFile {
 		})
 	}
 	return files
+}
+
+func parseDiffFiles(diff string) []ChangedFile {
+	files := []ChangedFile{}
+	currentIndex := -1
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			path := parseDiffGitPath(line)
+			files = append(files, ChangedFile{Path: path, Status: "M"})
+			currentIndex = len(files) - 1
+			continue
+		}
+		if currentIndex < 0 {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "new file mode "):
+			files[currentIndex].Status = "A"
+		case strings.HasPrefix(line, "deleted file mode "):
+			files[currentIndex].Status = "D"
+		case strings.HasPrefix(line, "similarity index ") && files[currentIndex].Status == "M":
+			files[currentIndex].Status = "R"
+		case strings.HasPrefix(line, "Binary files "):
+			files[currentIndex].Binary = true
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			files[currentIndex].Additions++
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			files[currentIndex].Deletions++
+		}
+	}
+	return files
+}
+
+func parseDiffGitPath(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) >= 4 {
+		path := strings.TrimPrefix(parts[3], "b/")
+		if path == "/dev/null" {
+			path = strings.TrimPrefix(parts[2], "a/")
+		}
+		return normalizeChangePath(path)
+	}
+	return ""
+}
+
+func extractFileDiff(diff, filePath string) string {
+	target := normalizeChangePath(filePath)
+	if target == "" {
+		return diff
+	}
+	var selected []string
+	capturing := false
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			if capturing {
+				break
+			}
+			capturing = parseDiffGitPath(line) == target
+		}
+		if capturing {
+			selected = append(selected, line)
+		}
+	}
+	return strings.TrimRight(strings.Join(selected, "\n"), "\n")
 }
 
 func filterChangedFiles(ctx context.Context, cwd string, files []ChangedFile) []ChangedFile {
