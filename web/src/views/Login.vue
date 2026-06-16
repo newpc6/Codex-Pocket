@@ -484,7 +484,7 @@ async function handleLogin() {
   }
 
   .login-right {
-    margin-top: -68px;
+    margin-top: -28px;
     padding: 0 16px 28px;
   }
 
