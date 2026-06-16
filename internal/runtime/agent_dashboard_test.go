@@ -1,6 +1,9 @@
 package runtime
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"codexpocket/internal/codex"
@@ -212,6 +215,57 @@ func TestDashboardActiveSessionsIncludeInProgressLastTurn(t *testing.T) {
 
 	if got, want := dashboard.Stats.ActiveSessions, 2; got != want {
 		t.Fatalf("active sessions = %d, want %d", got, want)
+	}
+}
+
+func TestDashboardRefreshesCodexHistoryBeforeStats(t *testing.T) {
+	sessionStore, err := store.New(nil)
+	if err != nil {
+		t.Fatalf("create session store: %v", err)
+	}
+
+	transcriptPath := filepath.Join(t.TempDir(), "session.jsonl")
+	threadID := "history-running-thread"
+	writeCodexTranscript(t, transcriptPath,
+		`{"timestamp":"2026-06-16T10:00:00Z","type":"session_meta","payload":{"id":"`+threadID+`","cwd":"/tmp/history","model_provider":"OpenAI"}}`,
+		`{"timestamp":"2026-06-16T10:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":1781604001}}`,
+		`{"timestamp":"2026-06-16T10:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"run"}]}}`,
+	)
+
+	sessionStore.ReplaceSessions([]codex.Thread{
+		{
+			ID:            threadID,
+			ModelProvider: "OpenAI",
+			CreatedAt:     100,
+			UpdatedAt:     200,
+			Status:        codex.ThreadStatus{Type: "idle"},
+			CWD:           "/tmp/history",
+			Path:          stringPtr(transcriptPath),
+		},
+	}, map[string]bool{})
+
+	agent := &Agent{store: sessionStore}
+	dashboard := agent.Dashboard()
+
+	if got, want := dashboard.Stats.ActiveSessions, 1; got != want {
+		t.Fatalf("active sessions = %d, want %d", got, want)
+	}
+	if got := dashboard.Sessions[0].Status; got != "active" {
+		t.Fatalf("summary status = %q, want active", got)
+	}
+	if got := dashboard.Sessions[0].LastTurnStatus; got != "inProgress" {
+		t.Fatalf("last turn status = %q, want inProgress", got)
+	}
+}
+
+func writeCodexTranscript(t *testing.T, path string, lines ...string) {
+	t.Helper()
+	content := ""
+	for _, line := range lines {
+		content += fmt.Sprintf("%s\n", line)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
 	}
 }
 

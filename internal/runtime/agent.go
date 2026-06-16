@@ -129,7 +129,8 @@ func (a *Agent) Unsubscribe(ch chan Event) {
 }
 
 func (a *Agent) Dashboard() Dashboard {
-	summaries := a.ListSessions()
+	a.syncCodexHistorySnapshots()
+	summaries := a.listSessionsFromStore()
 	approvals := a.PendingRequests()
 
 	stats := DashboardStats{
@@ -175,6 +176,11 @@ func sessionIsActive(session SessionSummary) bool {
 }
 
 func (a *Agent) ListSessions() []SessionSummary {
+	a.syncCodexHistorySnapshots()
+	return a.listSessionsFromStore()
+}
+
+func (a *Agent) listSessionsFromStore() []SessionSummary {
 	records := a.store.SnapshotSessions()
 	pending := a.store.SnapshotPending()
 	perThreadPending := make(map[string]int)
@@ -187,6 +193,18 @@ func (a *Agent) ListSessions() []SessionSummary {
 		summaries = append(summaries, toSessionSummary(record, perThreadPending[record.Thread.ID]))
 	}
 	return summaries
+}
+
+func (a *Agent) syncCodexHistorySnapshots() {
+	for _, record := range a.store.SnapshotSessions() {
+		if isClaudeThreadID(record.Thread.ID) {
+			continue
+		}
+		if err := a.refreshCodexThreadFromHistory(&record); err != nil {
+			continue
+		}
+		a.store.UpsertThread(record.Thread)
+	}
 }
 
 func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limit int) (SessionDetail, error) {
@@ -599,7 +617,7 @@ func (a *Agent) Refresh(ctx context.Context) error {
 	}
 
 	a.store.ReplaceSessions(threads, loaded)
-	a.broker.Publish("sessions.refreshed", a.ListSessions())
+	a.broker.Publish("sessions.refreshed", a.listSessionsFromStore())
 	return nil
 }
 
@@ -615,7 +633,7 @@ func (a *Agent) mergeCodexHistoryThread(thread *codex.Thread) error {
 		return nil
 	}
 
-	turns, updatedAt, managedNow, err := readCodexTurns(*thread)
+	turns, updatedAt, _, err := readCodexTurns(*thread)
 	if err != nil {
 		return err
 	}
@@ -625,15 +643,10 @@ func (a *Agent) mergeCodexHistoryThread(thread *codex.Thread) error {
 	if updatedAt > thread.UpdatedAt {
 		thread.UpdatedAt = updatedAt
 	}
-	if strings.TrimSpace(thread.Status.Type) == "" {
-		hasRunning := hasInProgressTurn(thread.Turns)
-		if managedNow && hasRunning {
-			thread.Status.Type = "active"
-		} else if hasRunning {
-			thread.Status.Type = "active"
-		} else {
-			thread.Status.Type = "idle"
-		}
+	if hasInProgressTurn(thread.Turns) {
+		thread.Status.Type = "active"
+	} else if strings.TrimSpace(thread.Status.Type) == "" || strings.TrimSpace(thread.Status.Type) == "active" {
+		thread.Status.Type = "idle"
 	}
 	return nil
 }
