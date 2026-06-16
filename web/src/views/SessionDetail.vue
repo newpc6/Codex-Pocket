@@ -190,13 +190,148 @@
                 <span class="turn-meta">{{ turnStatusText(turn) }}</span>
               </div>
 
-              <div v-if="shouldShowTurnActivity(turn)" class="activity-row">
+              <div v-if="shouldShowTurnActivity(turn) && turnProcessSummaryItems(turn).length === 0" class="activity-row">
                 <span class="activity-spinner"></span>
                 <span>{{ liveActivityText(turn) }}</span>
               </div>
 
+              <details
+                v-if="turnProcessSummaryItems(turn).length > 0"
+                class="turn-process is-compact"
+                :open="turn.status === 'inProgress'"
+              >
+                <summary class="turn-process-summary">
+                  <span class="turn-process-title">
+                    <span v-if="turn.status === 'inProgress'" class="activity-spinner is-small"></span>
+                    <span>{{ turnProcessedSummary(turn) }}</span>
+                  </span>
+                  <span v-if="turnProcessedDuration(turn)" class="turn-process-duration">{{ turnProcessedDuration(turn) }}</span>
+                </summary>
+
+                <div class="turn-process-items">
+                  <template
+                    v-for="block in turnTimelineBlocks(turn)"
+                    :key="`${turn.id}-timeline-${block.startIndex}-${block.kind}`"
+                  >
+                    <div v-if="block.kind === 'commands'" class="process-command-group">
+                      <details>
+                        <summary class="process-command-summary">
+                          <span>已运行 {{ block.entries.length }} 条命令</span>
+                          <span v-if="blockDuration(block)">{{ blockDuration(block) }}</span>
+                        </summary>
+                        <div class="process-command-list">
+                          <div
+                            v-for="entry in block.entries"
+                            :key="entry.item.id || `${turn.id}-cmd-${entry.index}`"
+                            class="process-entry-card"
+                          >
+                            <div class="process-entry-head">
+                              <span>{{ toolDisplayName(entry.item) }}</span>
+                              <span v-if="toolCommandTag(entry.item)" class="tool-command-tag" :title="toolCommandTag(entry.item)">
+                                {{ toolCommandTag(entry.item) }}
+                              </span>
+                            </div>
+                            <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
+                              <summary>输出</summary>
+                              <div v-if="entry.item.body" class="message-body is-code">
+                                <pre>{{ entry.item.body }}</pre>
+                              </div>
+                              <div v-if="entry.item.auxiliary" class="message-aux tool-output">
+                                <pre>{{ entry.item.auxiliary }}</pre>
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+
+                    <div
+                      v-else
+                      v-for="entry in block.entries"
+                      :key="entry.item.id || `${turn.id}-timeline-${entry.index}`"
+                      class="process-entry-card"
+                      :class="`is-${entry.item.type}`"
+                    >
+                      <div class="process-entry-head">
+                        <span>{{ processEntryTitle(entry.item) }}</span>
+                        <span v-if="entry.item.status">{{ entry.item.status }}</span>
+                      </div>
+                      <template v-if="entry.item.type === 'agentMessage' || entry.item.type === 'userMessage'">
+                        <div v-if="itemImages(entry.item).length" class="image-strip">
+                          <el-image
+                            v-for="image in itemImages(entry.item)"
+                            :key="image.url"
+                            class="message-thumb"
+                            :src="image.url"
+                            :preview-src-list="itemPreviewUrls(entry.item)"
+                            :initial-index="image.index"
+                            fit="cover"
+                            preview-teleported
+                          />
+                        </div>
+                        <div v-if="itemText(entry.item)" class="markdown-body">
+                          <VueMarkdown :source="renderMarkdown(itemText(entry.item))" :options="markdownOptions" />
+                        </div>
+                      </template>
+                      <template v-else-if="isStructuredToolItem(entry.item)">
+                        <div class="tool-headline">
+                          <span class="tool-type">{{ toolDisplayName(entry.item) }}</span>
+                          <span v-if="toolCommandTag(entry.item)" class="tool-command-tag" :title="toolCommandTag(entry.item)">
+                            {{ toolCommandTag(entry.item) }}
+                          </span>
+                        </div>
+                        <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
+                          <summary>查看原始内容</summary>
+                          <div v-if="entry.item.body" class="message-body is-code">
+                            <pre>{{ entry.item.body }}</pre>
+                          </div>
+                          <div v-if="entry.item.auxiliary" class="message-aux tool-output">
+                            <pre>{{ entry.item.auxiliary }}</pre>
+                          </div>
+                        </details>
+                      </template>
+                      <template v-else>
+                        <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
+                          <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
+                          <div v-else class="markdown-body">
+                            <VueMarkdown :source="renderMarkdown(itemText(entry.item) || entry.item.body)" :options="markdownOptions" />
+                          </div>
+                        </div>
+                        <details v-if="entry.item.auxiliary" class="message-aux">
+                          <summary>详细输出</summary>
+                          <pre>{{ entry.item.auxiliary }}</pre>
+                        </details>
+                      </template>
+                    </div>
+
+                    <div v-if="block.kind === 'diff'" class="process-entry-card is-fileChange">
+                      <div class="process-entry-head">
+                        <span>文件变更</span>
+                        <span>
+                          <span class="diff-add">+{{ diffSummary(turn.diff).additions }}</span>
+                          <span class="diff-del"> -{{ diffSummary(turn.diff).deletions }}</span>
+                        </span>
+                      </div>
+                      <details class="tool-details">
+                        <summary>查看 diff</summary>
+                        <div class="file-change-list">
+                          <div v-for="file in diffSummary(turn.diff).files" :key="file.path" class="file-change-row">
+                            <span class="file-change-path">{{ file.path }}</span>
+                            <span class="file-change-stats">
+                              <span class="diff-add">+{{ file.additions }}</span>
+                              <span class="diff-del">-{{ file.deletions }}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <pre class="diff-block">{{ turn.diff }}</pre>
+                      </details>
+                    </div>
+                  </template>
+                </div>
+              </details>
+
               <div
-                v-for="entry in turnPrimaryEntries(turn)"
+                v-for="entry in turnVisibleEntries(turn)"
                 :key="entry.item.id || `${turn.id}-${entry.index}`"
                 class="message-row"
                 :class="messageSide(entry.item.type)"
@@ -275,124 +410,6 @@
                   </template>
                 </div>
               </div>
-
-              <div v-if="turn.diff" class="message-row side-left">
-                <div class="message-bubble bubble-tool file-change-card">
-                  <details>
-                    <summary class="file-change-summary">
-                      <span class="file-change-title">已编辑 {{ diffSummary(turn.diff).files.length }} 个文件</span>
-                      <span class="diff-add">+{{ diffSummary(turn.diff).additions }}</span>
-                      <span class="diff-del">-{{ diffSummary(turn.diff).deletions }}</span>
-                      <span class="file-change-action">查看 diff</span>
-                    </summary>
-                    <div class="file-change-list">
-                      <div v-for="file in diffSummary(turn.diff).files" :key="file.path" class="file-change-row">
-                        <span class="file-change-path">{{ file.path }}</span>
-                        <span class="file-change-stats">
-                          <span class="diff-add">+{{ file.additions }}</span>
-                          <span class="diff-del">-{{ file.deletions }}</span>
-                        </span>
-                      </div>
-                    </div>
-                    <pre class="diff-block">{{ turn.diff }}</pre>
-                  </details>
-                </div>
-              </div>
-
-              <details
-                v-if="turnProcessEntries(turn).length > 0"
-                class="turn-process"
-              >
-                <summary class="turn-process-summary">
-                  <span class="turn-process-title">
-                    <span v-if="turn.status === 'inProgress'" class="activity-spinner is-small"></span>
-                    <span>{{ turnProcessSummary(turn) }}</span>
-                  </span>
-                  <span v-if="turn.durationMs > 0" class="turn-process-duration">{{ formatDurationMs(turn.durationMs) }}</span>
-                </summary>
-
-                <div class="turn-process-items">
-                  <div
-                    v-for="entry in turnProcessEntries(turn)"
-                    :key="entry.item.id || `${turn.id}-process-${entry.index}`"
-                    class="message-row side-left"
-                  >
-                    <div class="message-bubble" :class="bubbleClass(entry.item.type)">
-                      <div v-if="!isStructuredToolItem(entry.item)" class="message-topline">
-                        <span class="message-label">{{ itemLabel(entry.item.type) }}</span>
-                        <span v-if="entry.item.status" class="message-status">{{ entry.item.status }}</span>
-                      </div>
-
-                      <div
-                        v-if="entry.item.title && entry.item.type !== 'userMessage' && entry.item.type !== 'agentMessage' && !isStructuredToolItem(entry.item)"
-                        class="message-title"
-                      >
-                        {{ entry.item.title }}
-                      </div>
-
-                      <template v-if="isStructuredToolItem(entry.item)">
-                        <div class="tool-card">
-                          <div class="tool-summary">
-                            <div class="tool-main">
-                              <div class="tool-name">工具</div>
-                              <div class="tool-headline">
-                                <span class="tool-type">{{ toolDisplayName(entry.item) }}</span>
-                                <span
-                                  v-if="toolCommandTag(entry.item)"
-                                  class="tool-command-tag"
-                                  :title="toolCommandTag(entry.item)"
-                                >
-                                  {{ toolCommandTag(entry.item) }}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
-                            <summary>查看原始内容</summary>
-                            <div v-if="entry.item.body" class="message-body is-code">
-                              <pre>{{ entry.item.body }}</pre>
-                            </div>
-                            <div v-if="entry.item.auxiliary" class="message-aux tool-output">
-                              <div class="tool-output-title">输出</div>
-                              <pre>{{ entry.item.auxiliary }}</pre>
-                            </div>
-                          </details>
-                        </div>
-                      </template>
-
-                      <template v-else>
-                        <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
-                          <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
-                          <template v-else>
-                            <div v-if="itemImages(entry.item).length" class="image-strip">
-                              <el-image
-                                v-for="image in itemImages(entry.item)"
-                                :key="image.url"
-                                class="message-thumb"
-                                :src="image.url"
-                                :preview-src-list="itemPreviewUrls(entry.item)"
-                                :initial-index="image.index"
-                                fit="cover"
-                                preview-teleported
-                              />
-                            </div>
-                            <div v-if="itemText(entry.item)" class="markdown-body">
-                              <VueMarkdown :source="renderMarkdown(itemText(entry.item))" :options="markdownOptions" />
-                              <span v-if="isStreamingItem(turn, entry.item, entry.index)" class="typing-cursor">|</span>
-                            </div>
-                          </template>
-                        </div>
-
-                        <details v-if="entry.item.auxiliary" class="message-aux">
-                          <summary>详细输出</summary>
-                          <pre>{{ entry.item.auxiliary }}</pre>
-                        </details>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-              </details>
 
               <div v-if="turn.error" class="message-row side-left">
                 <div class="message-bubble bubble-error">
@@ -586,6 +603,7 @@ const reviewRef = ref('')
 const reviewBase = ref('main')
 const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let liveSyncBusy = false
 
 const liveLeaseKey = `cf_live_session_lease:${sessionId}`
@@ -602,6 +620,11 @@ const markdownOptions = {
 
 const localAssetBase = '/api/v1/assets/local-image'
 type TurnItemEntry = { item: TurnItem; index: number }
+type TurnTimelineBlock = {
+  kind: 'entries' | 'commands' | 'diff'
+  entries: TurnItemEntry[]
+  startIndex: number
+}
 type DiffFileSummary = { path: string; additions: number; deletions: number }
 type DiffSummary = { files: DiffFileSummary[]; additions: number; deletions: number }
 type MessageImage = { url: string; alt: string; index: number }
@@ -625,6 +648,7 @@ const summary = computed<SessionSummary | undefined>(() => {
 const sessionApprovals = computed(() => app.filteredApprovals.filter((a) => a.threadId === sessionId))
 const orderedTurns = computed(() => detail.value?.turns || [])
 const latestTurn = computed(() => orderedTurns.value[orderedTurns.value.length - 1])
+const elapsedNow = ref(Date.now())
 const showNewMessageHint = computed(() => pendingNewMessages.value > 0 && !followLiveOutput.value)
 const runningTurn = computed(() => {
   for (let i = orderedTurns.value.length - 1; i >= 0; i -= 1) {
@@ -740,6 +764,69 @@ function turnProcessEntries(turn: Turn): TurnItemEntry[] {
   return turnItemEntries(turn).filter((entry) => !isPrimaryItem(entry.item))
 }
 
+function finalAgentEntry(turn: Turn): TurnItemEntry | undefined {
+  const entries = turnItemEntries(turn)
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i]
+    if (entry.item.type === 'agentMessage' && itemText(entry.item)) {
+      return entry
+    }
+  }
+  return undefined
+}
+
+function turnVisibleEntries(turn: Turn): TurnItemEntry[] {
+  const entries = turnItemEntries(turn)
+  if (turn.status === 'inProgress') {
+    return entries.filter((entry) => entry.item.type === 'userMessage')
+  }
+  const finalEntry = finalAgentEntry(turn)
+  if (finalEntry) return [finalEntry]
+  return entries.filter((entry) => entry.item.type === 'userMessage' || entry.item.type === 'agentMessage').slice(-1)
+}
+
+function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
+  const finalEntry = finalAgentEntry(turn)
+  const finalIndex = finalEntry?.index ?? -1
+  return turnItemEntries(turn).filter((entry) => {
+    if (entry.index === finalIndex) return false
+    if (entry.item.type === 'userMessage') return false
+    if (entry.item.type === 'agentMessage' && !itemText(entry.item)) return false
+    return true
+  })
+}
+
+function turnTimelineBlocks(turn: Turn): TurnTimelineBlock[] {
+  const blocks: TurnTimelineBlock[] = []
+  const summaryEntries = turnProcessSummaryItems(turn)
+  let commandBlock: TurnTimelineBlock | null = null
+
+  const flushCommandBlock = () => {
+    if (commandBlock) {
+      blocks.push(commandBlock)
+      commandBlock = null
+    }
+  }
+
+  for (const entry of summaryEntries) {
+    if (isCommandLikeItem(entry.item)) {
+      if (!commandBlock) {
+        commandBlock = { kind: 'commands', entries: [], startIndex: entry.index }
+      }
+      commandBlock.entries.push(entry)
+      continue
+    }
+    flushCommandBlock()
+    blocks.push({ kind: 'entries', entries: [entry], startIndex: entry.index })
+  }
+  flushCommandBlock()
+
+  if (turn.diff?.trim()) {
+    blocks.push({ kind: 'diff', entries: [], startIndex: Number.MAX_SAFE_INTEGER })
+  }
+  return blocks
+}
+
 function isCommandLikeItem(item: TurnItem): boolean {
   return item.type === 'commandExecution'
     || item.type === 'mcpToolCall'
@@ -758,6 +845,43 @@ function turnProcessSummary(turn: Turn): string {
   if (fileChangeCount > 0) parts.push(`修改 ${fileChangeCount} 个文件`)
   if (otherCount > 0) parts.push(`${otherCount} 条过程`)
   return parts.join(' · ') || `${entries.length} 条过程`
+}
+
+function turnProcessedSummary(turn: Turn): string {
+  return '已处理'
+}
+
+function turnProcessedDuration(turn: Turn): string {
+  if (turn.durationMs > 0) return formatDurationMs(turn.durationMs)
+  if (turn.status === 'inProgress' && turn.startedAt > 0) {
+    const startedAtMs = normalizeTimestampMs(turn.startedAt)
+    return formatDurationMs(Math.max(elapsedNow.value - startedAtMs, 0))
+  }
+  return ''
+}
+
+function normalizeTimestampMs(value: number): number {
+  if (!value || value <= 0) return 0
+  return value < 1_000_000_000_000 ? value * 1000 : value
+}
+
+function processEntryTitle(item: TurnItem): string {
+  if (item.type === 'fileChange') {
+    const fileCount = fileChangeCountFromItem(item)
+    return fileCount > 0 ? `已编辑 ${fileCount} 个文件` : '已编辑文件'
+  }
+  return itemLabel(item.type)
+}
+
+function fileChangeCountFromItem(item: TurnItem): number {
+  const text = `${item.title || ''}\n${item.body || ''}\n${item.auxiliary || ''}`
+  const match = text.match(/(\d+)\s*(?:个)?文件/)
+  if (match) return Number(match[1]) || 0
+  return 0
+}
+
+function blockDuration(_block: TurnTimelineBlock): string {
+  return ''
 }
 
 function liveActivityText(turn: Turn): string {
@@ -1412,6 +1536,9 @@ onMounted(async () => {
   window.addEventListener('focus', refreshSessionWhenVisible)
   window.addEventListener('storage', onLiveStorage)
   liveSyncTimer = setInterval(syncLiveTranscript, liveSyncIntervalMs)
+  elapsedTimer = setInterval(() => {
+    elapsedNow.value = Date.now()
+  }, 1000)
   scrollChatToBottom(true)
 })
 
@@ -1428,6 +1555,10 @@ onUnmounted(() => {
   if (liveSyncTimer) {
     clearInterval(liveSyncTimer)
     liveSyncTimer = null
+  }
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
   }
   try {
     const raw = localStorage.getItem(liveLeaseKey)
@@ -1507,11 +1638,11 @@ onUnmounted(() => {
 .session-hero {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  margin: 0 18px 8px;
-  border: 1px solid var(--cf-border);
-  border-radius: 14px;
+  gap: 4px;
+  padding: 6px 12px;
+  margin: 0 18px 5px;
+  border: 1px solid rgba(205, 223, 255, 0.78);
+  border-radius: 12px;
   background:
     linear-gradient(140deg, rgba(51, 136, 255, 0.1) 0%, rgba(51, 136, 255, 0.02) 46%, rgba(255, 255, 255, 0.96) 100%),
     #fff;
@@ -1531,7 +1662,8 @@ onUnmounted(() => {
   gap: 6px;
   border: 0;
   border-radius: 999px;
-  padding: 6px 10px;
+  min-height: 26px;
+  padding: 4px 9px;
   background: rgba(255, 255, 255, 0.88);
   color: var(--cf-text-secondary);
   font-size: 12px;
@@ -1553,16 +1685,16 @@ onUnmounted(() => {
 
 .hero-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .hero-title-group {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .hero-name-row {
@@ -1573,7 +1705,7 @@ onUnmounted(() => {
 }
 
 .hero-name {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.1;
   font-weight: 700;
   color: var(--cf-text-heavy);
@@ -1583,7 +1715,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -1595,7 +1727,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
-  order: 2;
+  order: 1;
 }
 
 .hero-tags {
@@ -1603,14 +1735,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   flex-wrap: wrap;
-  order: 1;
+  order: 2;
 }
 
 .hero-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
+  min-height: 20px;
+  padding: 0 7px;
   border-radius: 999px;
   background: rgba(51, 136, 255, 0.08);
   color: var(--cf-primary-dark);
@@ -1626,18 +1758,22 @@ onUnmounted(() => {
 .hero-preview {
   margin: 0;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.35;
   color: var(--cf-text-secondary);
   max-width: 780px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-status-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 8px;
+  min-width: 300px;
+  padding: 6px 8px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(216, 230, 251, 0.95);
   box-shadow: 0 6px 14px rgba(15, 46, 106, 0.05);
@@ -1649,13 +1785,13 @@ onUnmounted(() => {
 }
 
 .hero-status-label {
-  font-size: 11px;
+  display: none;
   color: var(--cf-text-lighter);
   font-weight: 600;
 }
 
 .hero-status-value {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
   color: var(--cf-text-heavy);
@@ -1663,21 +1799,24 @@ onUnmounted(() => {
 }
 
 .hero-status-desc {
+  display: none;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.25;
   color: var(--cf-text-secondary);
+  max-width: 150px;
 }
 
 .hero-primary-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .hero-primary-actions :deep(.el-button) {
-  min-width: 116px;
-  min-height: 30px;
-  border-radius: 9px;
+  min-width: 92px;
+  min-height: 28px;
+  border-radius: 8px;
 }
 
 .hero-actions :deep(.el-button) {
@@ -1949,16 +2088,23 @@ onUnmounted(() => {
   box-shadow: 0 8px 18px rgba(15, 46, 106, 0.035);
 }
 
+.turn-process.is-compact {
+  border-color: rgba(226, 232, 240, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: none;
+}
+
 .turn-process-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 7px 12px;
   cursor: pointer;
   color: var(--cf-text-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .turn-process-title {
@@ -1977,9 +2123,48 @@ onUnmounted(() => {
 .turn-process-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding: 0 12px 12px;
   border-top: 1px solid rgba(216, 230, 251, 0.8);
+}
+
+.process-entry-card,
+.process-command-group {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px 10px;
+}
+
+.process-entry-card.is-agentMessage {
+  border-color: rgba(205, 223, 255, 0.95);
+  background: #fbfdff;
+}
+
+.process-entry-head,
+.process-command-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.process-command-summary {
+  cursor: pointer;
+}
+
+.process-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.process-command-list .process-entry-card {
+  background: #f8fbff;
 }
 
 .turn-process-items .message-bubble {
@@ -2577,20 +2762,23 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .session-hero {
-  margin: 0 10px 12px;
-  padding: 12px;
-  border-radius: 16px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
 }
 
 .session-detail-page.is-mobile .hero-top,
 .session-detail-page.is-mobile .hero-main {
   display: flex;
   flex-direction: column;
+  gap: 8px;
 }
 
 .session-detail-page.is-mobile .hero-status-card {
-  flex-direction: column;
+  flex-direction: row;
   align-items: stretch;
+  min-width: 0;
+  padding: 7px 9px;
 }
 
 .session-detail-page.is-mobile .hero-primary-actions {
@@ -2599,7 +2787,7 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .hero-name {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .session-detail-page.is-mobile .hero-preview {
@@ -2608,6 +2796,10 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .hero-status-card {
   width: 100%;
+}
+
+.session-detail-page.is-mobile .hero-status-desc {
+  display: none;
 }
 
 .session-detail-page.is-mobile .content-area {
