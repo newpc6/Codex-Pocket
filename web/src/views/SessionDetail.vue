@@ -536,10 +536,13 @@
       </template>
     </el-dialog>
 
-    <div v-if="summary && summary.loaded && !summary.ended" class="input-area">
+    <div v-if="summary && !summary.ended" class="input-area">
       <div v-if="isStreamingReply" class="streaming-hint">
         <span class="live-dot"></span>
         Codex 正在回复
+      </div>
+      <div v-else-if="!summary.loaded" class="input-status-hint">
+        未接管会话，发送时会自动接管。
       </div>
       <div class="input-row">
         <el-input
@@ -552,7 +555,7 @@
         />
         <el-button type="primary" :loading="submitting" @click="handleSubmit"
           :disabled="!promptText.trim()" class="send-btn">
-          {{ runningTurn ? 'Steer' : '发送' }}
+          {{ sendButtonLabel }}
         </el-button>
         <el-button v-if="runningTurn" type="warning" size="small" @click="handleInterrupt">
           中断
@@ -663,6 +666,11 @@ const isStreamingReply = computed(() => {
   return turn.items?.some((item: TurnItem) => item.type === 'agentMessage' && item.body)
 })
 const isCompactingSession = computed(() => app.compactingSessionIds.has(sessionId))
+const sendButtonLabel = computed(() => {
+  if (runningTurn.value) return 'Steer'
+  if (!summary.value?.loaded) return '接管并发送'
+  return '发送'
+})
 
 function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
@@ -1312,18 +1320,26 @@ async function handleSubmit() {
   if (!promptText.value.trim()) return
   submitting.value = true
   try {
+    const text = promptText.value
+    const autoResume = !summary.value?.loaded
+    if (autoResume) {
+      resuming.value = true
+      await app.resumeSession(sessionId)
+      resuming.value = false
+    }
     const activeTurn = runningTurn.value
     if (activeTurn?.id) {
-      await app.steerTurn(sessionId, activeTurn.id, promptText.value)
+      await app.steerTurn(sessionId, activeTurn.id, text)
     } else {
-      await app.startTurn(sessionId, promptText.value)
+      await app.startTurn(sessionId, text)
     }
     promptText.value = ''
     followLiveOutput.value = true
-    ElMessage.success('指令已发送')
+    ElMessage.success(autoResume ? '已接管并发送' : '指令已发送')
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || '发送失败')
   } finally {
+    resuming.value = false
     submitting.value = false
   }
 }
@@ -2734,6 +2750,13 @@ onUnmounted(() => {
   background: var(--cf-card);
   border-top: 1px solid var(--cf-border-light);
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.input-status-hint {
+  margin: 0 0 6px;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .input-row {
