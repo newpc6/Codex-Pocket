@@ -1589,16 +1589,9 @@ function turnNumber(id: string) {
 
 function setChatScrollToBottom(force = false) {
   const el = chatAreaRef.value
-  if (!el) {
-    if (force || followLiveOutput.value) window.scrollTo({ top: document.documentElement.scrollHeight })
-    return
-  }
+  if (!el) return
   if (!force && !followLiveOutput.value) return
   el.scrollTop = el.scrollHeight
-  if (isMobile.value) {
-    window.scrollTo({ top: document.documentElement.scrollHeight })
-    document.scrollingElement?.scrollTo({ top: document.scrollingElement.scrollHeight })
-  }
 }
 
 function scrollChatToBottom(force = false) {
@@ -3840,19 +3833,27 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile {
+  display: block;
   height: auto;
   min-height: 100%;
   overflow: visible;
+  padding-top: 0;
 }
 
 .session-detail-page.is-mobile .session-hero {
-  margin: 0 10px 8px;
-  padding: 8px 10px;
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: max-content;
+  margin: 0 0 10px;
+  padding: 10px 12px;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .session-detail-page.is-mobile .hero-top {
+  width: 100%;
+  min-width: 0;
   align-items: center;
 }
 
@@ -3893,7 +3894,7 @@ onUnmounted(() => {
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .session-detail-page.is-mobile .hero-tags {
@@ -3954,13 +3955,15 @@ onUnmounted(() => {
 }
 
 .session-detail-page.is-mobile .content-area {
+  display: block;
   overflow: visible;
   min-height: auto;
-  padding: 0 0 0;
+  padding: 0;
   background: transparent;
 }
 
 .session-detail-page.is-mobile .chat-shell {
+  min-height: 0;
   border-radius: 14px;
 }
 
