@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="选择工作目录"
-    width="720px"
+    :width="dialogWidth"
     class="directory-picker-dialog"
     :close-on-click-modal="false"
     @update:model-value="$emit('update:modelValue', $event)"
@@ -54,14 +54,15 @@
             :key="entry.path"
             class="directory-item"
             :class="{ selected: selectedPath === entry.path, disabled: !entry.isReadable }"
-            @click="selectPath(entry.path)"
+            @click="handleDirectoryClick(entry)"
             @dblclick="entry.isReadable && openPath(entry.path)"
           >
             <div class="directory-main">
               <el-icon><Folder /></el-icon>
               <span>{{ entry.name }}</span>
             </div>
-            <el-tag v-if="!entry.isReadable" type="info" size="small">不可读</el-tag>
+            <el-button v-if="entry.isReadable && !isMobile" link type="primary" @click.stop="openPath(entry.path)">进入</el-button>
+            <el-tag v-else-if="!entry.isReadable" type="info" size="small">不可读</el-tag>
           </div>
         </div>
       </div>
@@ -75,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Folder, House, Refresh, Top } from '@element-plus/icons-vue'
 import api from '../utils/api'
@@ -112,6 +113,7 @@ const loading = ref(false)
 const error = ref('')
 const selectedPath = ref('')
 const pathInput = ref('')
+const isMobile = ref(window.innerWidth <= 768)
 const browser = ref<DirectoryBrowseResult>({
   currentPath: '',
   parentPath: '',
@@ -135,6 +137,15 @@ const quickEntries = computed(() => {
   }
   return [...items, ...browser.value.roots]
 })
+
+const dialogWidth = computed(() => isMobile.value ? 'calc(100vw - 24px)' : '720px')
+
+function onResize() {
+  isMobile.value = window.innerWidth <= 768
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 watch(() => props.modelValue, async (open) => {
   if (!open) return
@@ -161,6 +172,18 @@ async function openPath(path: string) {
 
 function selectPath(path: string) {
   selectedPath.value = path
+}
+
+function handleDirectoryClick(entry: DirectoryEntry) {
+  if (!entry.isReadable) {
+    selectPath(entry.path)
+    return
+  }
+  if (isMobile.value) {
+    void openPath(entry.path)
+    return
+  }
+  selectPath(entry.path)
 }
 
 function openParent() {
@@ -327,16 +350,85 @@ function confirmSelection() {
 
 @media (max-width: 768px) {
   .directory-picker-dialog :deep(.el-dialog) {
-    width: min(92vw, 720px) !important;
-    max-height: 84vh;
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 32px);
+    margin: 16px auto !important;
+  }
+
+  .directory-picker-dialog :deep(.el-dialog__header) {
+    padding: 14px 16px 8px;
+  }
+
+  .directory-picker-dialog :deep(.el-dialog__body) {
+    padding: 10px 16px;
+  }
+
+  .directory-picker-dialog :deep(.el-dialog__footer) {
+    padding: 10px 16px 14px;
+  }
+
+  .directory-picker-dialog :deep(.dialog-footer),
+  .directory-picker-dialog :deep(.el-dialog__footer) {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .picker-shell {
-    max-height: 68vh;
+    max-height: calc(100dvh - 150px);
+  }
+
+  .picker-toolbar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .picker-toolbar :deep(.el-button) {
+    justify-content: center;
+    min-width: 0;
+    padding: 8px 6px;
+  }
+
+  .path-input {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .picker-current {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+
+  .picker-path {
+    max-width: 100%;
   }
 
   .picker-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
+    overflow: auto;
+  }
+
+  .picker-roots,
+  .picker-list {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .location-item,
+  .directory-item {
+    min-height: 42px;
+    padding: 11px 10px;
+  }
+
+  .directory-main span {
+    white-space: normal;
+    word-break: break-all;
   }
 }
 </style>

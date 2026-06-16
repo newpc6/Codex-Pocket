@@ -246,6 +246,7 @@ export const useAppStore = defineStore('app', () => {
   const sessionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const activeSessionPollers = new Map<string, ReturnType<typeof setInterval>>()
   const sessionLoadInFlight = new Map<string, Promise<void>>()
+  const localPromptItemsBySession = new Map<string, TurnItem[]>()
   let dashboardRefreshInFlight: Promise<void> | null = null
   let dashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null
   let lastDashboardRefreshAt = 0
@@ -324,29 +325,30 @@ export const useAppStore = defineStore('app', () => {
         if (typeof options?.limit === 'number') params.limit = options.limit
         if (options?.fast) params.fast = 1
         const res = await api.get<SessionDetail>(`/sessions/${id}`, { params })
+        const nextDetail = withLocalPromptItems(id, res.data)
         if (options?.appendHistory && sessionDetails.value[id]) {
           const existing = sessionDetails.value[id]
-          const mergedTurns = [...res.data.turns, ...existing.turns]
+          const mergedTurns = [...nextDetail.turns, ...existing.turns]
           sessionDetails.value[id] = {
-            ...res.data,
+            ...nextDetail,
             turns: mergedTurns,
           }
           return
         }
         if (!options?.appendHistory && sessionDetails.value[id]) {
           const existing = sessionDetails.value[id]
-          const keepCount = res.data.offset - existing.offset
+          const keepCount = nextDetail.offset - existing.offset
           if (keepCount > 0 && existing.turns.length >= keepCount) {
             sessionDetails.value[id] = {
-              ...res.data,
-              turns: [...existing.turns.slice(0, keepCount), ...res.data.turns],
+              ...nextDetail,
+              turns: [...existing.turns.slice(0, keepCount), ...nextDetail.turns],
               offset: existing.offset,
               hasMoreHistory: existing.offset > 0,
             }
             return
           }
         }
-        sessionDetails.value[id] = res.data
+        sessionDetails.value[id] = nextDetail
       } catch (e: any) {
         error.value = e.response?.data?.error || e.message
       }
@@ -430,7 +432,56 @@ export const useAppStore = defineStore('app', () => {
       body,
       status: '',
       auxiliary: '',
+      metadata: { localInput: 'true' },
     }]
+  }
+
+  function rememberLocalPromptItems(sessionId: string, input: Array<Record<string, string>>) {
+    const items = inputItemsToTurnItems(input)
+    if (items.length === 0) return
+    localPromptItemsBySession.set(sessionId, items)
+    try {
+      sessionStorage.setItem(`cf_local_prompt:${sessionId}`, JSON.stringify(items))
+    } catch {
+      // Best-effort cache so the just-created prompt survives a route refresh.
+    }
+  }
+
+  function localPromptItems(sessionId: string): TurnItem[] {
+    const cached = localPromptItemsBySession.get(sessionId)
+    if (cached?.length) return cached
+    try {
+      const raw = sessionStorage.getItem(`cf_local_prompt:${sessionId}`)
+      if (!raw) return []
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
+      const items = parsed.filter((item) => item?.type === 'userMessage' && item?.body)
+      if (items.length) localPromptItemsBySession.set(sessionId, items)
+      return items
+    } catch {
+      return []
+    }
+  }
+
+  function withLocalPromptItems(sessionId: string, detail: SessionDetail): SessionDetail {
+    const items = localPromptItems(sessionId)
+    if (items.length === 0 || detail.turns.length === 0) return detail
+
+    const lastTurnIndex = detail.summary.lastTurnId
+      ? detail.turns.findIndex((turn) => turn.id === detail.summary.lastTurnId)
+      : -1
+    const turnIndex = lastTurnIndex >= 0 ? lastTurnIndex : detail.turns.length - 1
+    const turns = detail.turns.map((turn, index) => {
+      if (index !== turnIndex) return turn
+      const existingBodies = new Set(turn.items.filter((item) => item.type === 'userMessage').map((item) => item.body))
+      const missing = items.filter((item) => !existingBodies.has(item.body))
+      if (missing.length === 0) return turn
+      return {
+        ...turn,
+        items: [...missing, ...turn.items],
+      }
+    })
+    return { ...detail, turns }
   }
 
   function appendLocalUserInput(threadId: string, turnId: string, input: Array<Record<string, string>>) {
@@ -628,6 +679,9 @@ export const useAppStore = defineStore('app', () => {
       reasoningEffort: options?.reasoningEffort || '',
       collaborationMode: options?.collaborationMode || '',
     })
+    const inputs: Array<Record<string, string>> = []
+    if (prompt.trim()) inputs.push({ type: 'text', text: prompt.trim() })
+    if (res.data?.id) rememberLocalPromptItems(res.data.id, inputs)
     await refreshDashboard()
     await loadSession(res.data.id)
     return res.data

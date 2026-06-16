@@ -950,6 +950,15 @@ function isPrimaryItem(item: TurnItem): boolean {
   return item.type === 'userMessage' || item.type === 'agentMessage'
 }
 
+function isInjectedUserMessage(item: TurnItem): boolean {
+  if (item.type !== 'userMessage') return false
+  if (item.metadata?.localInput === 'true') return false
+  const text = itemText(item) || item.body || ''
+  return text.includes('<environment_context>')
+    || text.includes('AGENTS.md instructions for')
+    || text.includes('<INSTRUCTIONS>')
+}
+
 function turnPrimaryEntries(turn: Turn): TurnItemEntry[] {
   return turnItemEntries(turn).filter((entry) => isPrimaryItem(entry.item))
 }
@@ -988,7 +997,7 @@ function processHostEntry(turn: Turn): TurnItemEntry | undefined {
 
 function turnVisibleEntries(turn: Turn): TurnItemEntry[] {
   const entries = turnItemEntries(turn)
-  const userEntries = entries.filter((entry) => entry.item.type === 'userMessage')
+  const userEntries = entries.filter((entry) => entry.item.type === 'userMessage' && !isInjectedUserMessage(entry.item))
   const hostEntry = processHostEntry(turn)
   if (hostEntry) return [...userEntries, hostEntry]
   return userEntries.length > 0
