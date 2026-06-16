@@ -429,12 +429,18 @@
                 </div>
               </div>
 
-              <div v-if="turnChangedFiles(turn).length > 0" class="turn-change-card">
+              <div v-if="shouldShowLiveActivityAfterTurn(turn)" class="activity-row is-latest">
+                <span class="activity-spinner"></span>
+                <span>{{ liveActivityText(turn) }}</span>
+              </div>
+
+              <div v-if="turnDisplayChangedFiles(turn).length > 0" class="turn-change-card">
                 <div class="turn-change-head">
-                  <span>{{ turnChangedFiles(turn).length }} 个文件已更改</span>
+                  <span>{{ turnChangeSummaryText(turn) }}</span>
                   <div class="turn-change-actions">
                     <button type="button" @click="reviewTurnChanges(turn)">审查</button>
                     <button
+                      v-if="turn.status !== 'inProgress'"
                       type="button"
                       :disabled="revertingFiles"
                       @click="revertTurnChanges(turn)"
@@ -467,11 +473,6 @@
                     <el-icon><ArrowRight /></el-icon>
                   </button>
                 </div>
-              </div>
-
-              <div v-if="shouldShowLiveActivityAfterTurn(turn)" class="activity-row is-latest">
-                <span class="activity-spinner"></span>
-                <span>{{ liveActivityText(turn) }}</span>
               </div>
             </section>
           </template>
@@ -741,6 +742,7 @@ const changesDrawerOpen = ref(false)
 const changesLoading = ref(false)
 const changesError = ref('')
 const changes = ref<SessionChanges | null>(null)
+const liveChanges = ref<SessionChanges | null>(null)
 const selectedFileDetail = ref<ChangedFileDetail | null>(null)
 const selectedChangeFile = ref('')
 const changeScope = ref('workspace')
@@ -760,8 +762,10 @@ const expandedTurnChangeIds = ref(new Set<string>())
 const pendingImages = ref<Array<{ id: string; name: string; size: number }>>([])
 const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
+let liveChangesTimer: ReturnType<typeof setInterval> | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let liveSyncBusy = false
+let liveChangesBusy = false
 let initialScrollDone = false
 
 const liveLeaseKey = `cf_live_session_lease:${sessionId}`
@@ -1035,6 +1039,40 @@ function turnProcessSummary(turn: Turn): string {
   return parts.join(' · ') || `${entries.length} 条过程`
 }
 
+function liveChangedFilesForTurn(turn: Turn): DiffFileSummary[] {
+  if (turn.status !== 'inProgress' || runningTurn.value?.id !== turn.id) return []
+  return filterDisplayChangedFiles((liveChanges.value?.files || []).map((file) => ({
+    path: file.path,
+    additions: file.additions,
+    deletions: file.deletions,
+  })))
+}
+
+function turnDisplayChangedFiles(turn: Turn): DiffFileSummary[] {
+  const base = turnChangedFiles(turn)
+  const live = liveChangedFilesForTurn(turn)
+  if (live.length === 0) return base
+  const byPath = new Map<string, DiffFileSummary>()
+  for (const file of [...base, ...live]) {
+    const existing = byPath.get(file.path)
+    if (existing) {
+      existing.additions = Math.max(existing.additions, file.additions)
+      existing.deletions = Math.max(existing.deletions, file.deletions)
+    } else {
+      byPath.set(file.path, { ...file })
+    }
+  }
+  return Array.from(byPath.values())
+}
+
+function turnChangeSummaryText(turn: Turn): string {
+  const files = turnDisplayChangedFiles(turn)
+  const additions = files.reduce((sum, file) => sum + file.additions, 0)
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
+  const prefix = turn.status === 'inProgress' ? '当前任务' : ''
+  return `${prefix}${files.length} 个文件已更改 +${additions} -${deletions}`
+}
+
 function turnProcessedSummary(turn: Turn): string {
   return '已处理'
 }
@@ -1074,11 +1112,26 @@ function blockDuration(_block: TurnTimelineBlock): string {
 
 function liveActivityText(turn: Turn): string {
   if (isCompactingSession.value) return '正在自动压缩上下文'
-  if (isEditingFiles(turn)) return '正在编辑文件'
+  if (isEditingFiles(turn)) return liveFileEditText(turn)
   if (turn.items.some((item) => isCommandLikeItem(item))) return '正在运行命令'
   if (turn.items.some((item) => item.type === 'agentMessage' && item.body)) return 'Codex 正在回复'
   if (turn.items.some((item) => item.type === 'reasoning')) return '正在思考'
   return '正在思考'
+}
+
+function liveFileEditText(turn: Turn): string {
+  const files = turnDisplayChangedFiles(turn)
+  const first = files[0]
+  if (!first) return '正在编辑文件'
+  const stats = `${first.additions > 0 ? ` +${first.additions}` : ''}${first.deletions > 0 ? ` -${first.deletions}` : ''}`.trim()
+  const suffix = files.length > 1 ? ` 等 ${files.length} 个文件` : ''
+  return `正在编辑 ${shortFileName(first.path)}${stats ? ` ${stats}` : ''}${suffix}`
+}
+
+function shortFileName(path: string): string {
+  const normalized = normalizeChangedPath(path)
+  const parts = normalized.split('/').filter(Boolean)
+  return parts[parts.length - 1] || normalized
 }
 
 function turnStatusText(turn: Turn): string {
@@ -1100,6 +1153,7 @@ function shouldShowLiveActivityAfterTurn(turn: Turn): boolean {
 }
 
 function isEditingFiles(turn: Turn): boolean {
+  if (liveChangedFilesForTurn(turn).length > 0) return true
   if (Boolean(turn.diff?.trim()) || turn.items.some((item) => item.type === 'fileChange')) return true
   return turn.items.some((item) => isFileMutationToolItem(item))
 }
@@ -1296,14 +1350,14 @@ function filterDisplayChangedFiles(files: DiffFileSummary[]): DiffFileSummary[] 
 }
 
 function visibleTurnChangedFiles(turn: Turn): DiffFileSummary[] {
-  const files = turnChangedFiles(turn)
+  const files = turnDisplayChangedFiles(turn)
   if (expandedTurnChangeIds.value.has(turn.id)) return files
   return files.slice(0, turnChangePreviewLimit)
 }
 
 function hiddenTurnChangeCount(turn: Turn): number {
   if (expandedTurnChangeIds.value.has(turn.id)) return 0
-  return Math.max(turnChangedFiles(turn).length - turnChangePreviewLimit, 0)
+  return Math.max(turnDisplayChangedFiles(turn).length - turnChangePreviewLimit, 0)
 }
 
 function toggleTurnChangeExpanded(turnID: string) {
@@ -1523,6 +1577,7 @@ watch(orderedTurns, (next, prev) => {
   } else if (latestChanged) {
     pendingNewMessages.value += 1
   }
+  refreshLiveChanges()
 }, { deep: true })
 
 async function refreshPage() {
@@ -1757,9 +1812,25 @@ async function syncLiveTranscript() {
   liveSyncBusy = true
   try {
     await app.loadSession(sessionId, { fast: true })
+    await refreshLiveChanges()
     publishLiveSnapshot()
   } finally {
     liveSyncBusy = false
+  }
+}
+
+async function refreshLiveChanges() {
+  if (!runningTurn.value || liveChangesBusy) {
+    if (!runningTurn.value) liveChanges.value = null
+    return
+  }
+  liveChangesBusy = true
+  try {
+    liveChanges.value = await app.loadSessionChanges(sessionId, { scope: 'workspace' })
+  } catch {
+    liveChanges.value = null
+  } finally {
+    liveChangesBusy = false
   }
 }
 
@@ -2091,11 +2162,13 @@ async function handleApprovalChoice(approval: ApprovalRequest, decision: string)
 
 onMounted(async () => {
   await refreshPage()
+  await refreshLiveChanges()
   app.registerActiveSession(sessionId)
   document.addEventListener('visibilitychange', refreshSessionWhenVisible)
   window.addEventListener('focus', refreshSessionWhenVisible)
   window.addEventListener('storage', onLiveStorage)
   liveSyncTimer = setInterval(syncLiveTranscript, liveSyncIntervalMs)
+  liveChangesTimer = setInterval(refreshLiveChanges, liveSyncIntervalMs)
   elapsedTimer = setInterval(() => {
     elapsedNow.value = Date.now()
   }, 1000)
@@ -2113,6 +2186,10 @@ onUnmounted(() => {
   if (liveSyncTimer) {
     clearInterval(liveSyncTimer)
     liveSyncTimer = null
+  }
+  if (liveChangesTimer) {
+    clearInterval(liveChangesTimer)
+    liveChangesTimer = null
   }
   if (elapsedTimer) {
     clearInterval(elapsedTimer)
