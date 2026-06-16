@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"codexflow/internal/codex"
+	"codexpocket/internal/codex"
 )
 
 type codexSessionLogEnvelope struct {

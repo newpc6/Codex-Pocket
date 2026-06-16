@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"codexflow/internal/codex"
+	"codexpocket/internal/codex"
 )
 
 func TestSummarizeUserInputUsesQuestionText(t *testing.T) {

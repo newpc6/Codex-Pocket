@@ -33,7 +33,7 @@ Planned later:
 
 ## Data Flow
 
-1. `CodexFlow Agent` starts `codex app-server --listen stdio://`.
+1. `CodexPocket Agent` starts `codex app-server --listen stdio://`.
 2. Agent initializes the JSON-RPC session with experimental API capability.
 3. Agent refreshes thread inventory and listens for notifications.
 4. Web Console calls the Agent HTTP API and subscribes to SSE.

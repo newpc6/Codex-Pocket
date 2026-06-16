@@ -32,7 +32,7 @@ type imageUploadStore struct {
 
 func newImageUploadStore() *imageUploadStore {
 	return &imageUploadStore{
-		baseDir: filepath.Join(os.TempDir(), "codexflow", "uploads"),
+		baseDir: filepath.Join(os.TempDir(), "codexpocket", "uploads"),
 		items:   make(map[string]imageUpload),
 	}
 }

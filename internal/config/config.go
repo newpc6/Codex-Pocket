@@ -32,7 +32,7 @@ func Load() Config {
 		ClaudePath:      "claude",
 		RefreshInterval: 12 * time.Second,
 		StateDBPath:     defaultStateDBPath(),
-		JWTSecret:       "codexflow-default-secret-change-me",
+		JWTSecret:       "codexpocket-default-secret-change-me",
 		Users:           []UserConfig{{Username: "admin", Password: "admin123"}},
 		WebDistPath:     "",
 	}
@@ -51,25 +51,25 @@ func Load() Config {
 	}
 
 	// Environment variables override config file
-	if v := os.Getenv("CODEXFLOW_LISTEN_ADDR"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_LISTEN_ADDR"); v != "" {
 		cfg.ListenAddr = v
 	}
-	if v := os.Getenv("CODEXFLOW_CODEX_PATH"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_CODEX_PATH"); v != "" {
 		cfg.CodexPath = v
 	}
-	if v := os.Getenv("CODEXFLOW_CLAUDE_PATH"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_CLAUDE_PATH"); v != "" {
 		cfg.ClaudePath = v
 	}
-	if v := os.Getenv("CODEXFLOW_JWT_SECRET"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_JWT_SECRET"); v != "" {
 		cfg.JWTSecret = v
 	}
-	if v := os.Getenv("CODEXFLOW_WEB_DIST_PATH"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_WEB_DIST_PATH"); v != "" {
 		cfg.WebDistPath = v
 	}
-	if v := os.Getenv("CODEXFLOW_STATE_DB_PATH"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_STATE_DB_PATH"); v != "" {
 		cfg.StateDBPath = v
 	}
-	if v := os.Getenv("CODEXFLOW_REFRESH_INTERVAL"); v != "" {
+	if v := os.Getenv("CODEXPOCKET_REFRESH_INTERVAL"); v != "" {
 		if parsed, err := time.ParseDuration(v); err == nil && parsed > 0 {
 			cfg.RefreshInterval = parsed
 		}
@@ -90,8 +90,8 @@ func Load() Config {
 
 func findConfigFile() string {
 	candidates := []string{
-		"codexflow.yaml",
-		"codexflow.yml",
+		"codexpocket.yaml",
+		"codexpocket.yml",
 		"config.yaml",
 		"config.yml",
 	}
@@ -129,7 +129,7 @@ func (c *Config) Authenticate(username, password string) bool {
 func defaultStateDBPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "./codexflow-state.db"
+		return "./codexpocket-state.db"
 	}
-	return filepath.Join(home, ".codexflow", "state.db")
+	return filepath.Join(home, ".codexpocket", "state.db")
 }

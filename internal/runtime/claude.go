@@ -17,8 +17,9 @@ import (
 	"time"
 	"unsafe"
 
-	"codexflow/internal/codex"
-	"codexflow/internal/store"
+	"codexpocket/internal/codex"
+	"codexpocket/internal/store"
+
 	"github.com/google/uuid"
 	claudeagent "github.com/roasbeef/claude-agent-sdk-go"
 )

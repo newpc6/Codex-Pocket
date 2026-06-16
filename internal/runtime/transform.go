@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"codexflow/internal/codex"
-	"codexflow/internal/store"
+	"codexpocket/internal/codex"
+	"codexpocket/internal/store"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"codexflow/internal/codex"
+	"codexpocket/internal/codex"
 )
 
 type SessionRuntime struct {

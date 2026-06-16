@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"codexflow/internal/config"
+	"codexpocket/internal/config"
 )
 
 func TestBrowseDirectoriesListsChildDirectories(t *testing.T) {

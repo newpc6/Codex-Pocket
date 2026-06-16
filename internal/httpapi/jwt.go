@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"codexflow/internal/config"
+	"codexpocket/internal/config"
 )
 
 type JWTService struct {

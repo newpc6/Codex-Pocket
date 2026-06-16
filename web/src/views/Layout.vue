@@ -7,7 +7,7 @@
         </div>
         <div class="brand-mark">CF</div>
         <div v-if="!isMobile" class="brand-text">
-          <div class="brand-title">CodexFlow</div>
+          <div class="brand-title">CodexPocket</div>
           <div class="brand-subtitle">Session Console</div>
         </div>
       </div>

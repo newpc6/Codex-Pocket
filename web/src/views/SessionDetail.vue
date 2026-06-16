@@ -68,7 +68,7 @@
           <div class="hero-status-copy">
             <div class="hero-status-label">当前状态</div>
             <div class="hero-status-value">
-              {{ summary.ended ? '会话已结束' : summary.loaded ? 'CodexFlow 正在托管' : '会话未接管' }}
+              {{ summary.ended ? '会话已结束' : summary.loaded ? 'CodexPocket 正在托管' : '会话未接管' }}
             </div>
             <div class="hero-status-desc">
               {{ statusDescription(summary) }}
@@ -516,8 +516,8 @@ function displayName(s: SessionSummary) { return sessionDisplayName(s) }
 
 function statusDescription(s: SessionSummary) {
   if (s.ended) return '当前会话已经结束，但历史内容仍然保留，可以重新接管继续工作。'
-  if (s.loaded) return '当前会话由 CodexFlow 持续同步和控制，你可以在这里继续发送指令或中断执行。'
-  return '当前会话还没有由 CodexFlow 托管，接管后可以继续执行并实时查看消息。'
+  if (s.loaded) return '当前会话由 CodexPocket 持续同步和控制，你可以在这里继续发送指令或中断执行。'
+  return '当前会话还没有由 CodexPocket 托管，接管后可以继续执行并实时查看消息。'
 }
 
 function itemLabel(type: string): string {
@@ -1089,7 +1089,7 @@ async function handleCompact() {
 
 async function handleRollback() {
   try {
-    await ElMessageBox.confirm('会从 Codex 上下文中移除最近 1 轮，并写入回滚记录。这个操作无法在 CodexFlow 内撤销。', '回滚最近一轮', {
+    await ElMessageBox.confirm('会从 Codex 上下文中移除最近 1 轮，并写入回滚记录。这个操作无法在 CodexPocket 内撤销。', '回滚最近一轮', {
       confirmButtonText: '回滚',
       cancelButtonText: '取消',
       type: 'warning',

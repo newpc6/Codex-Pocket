@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"codexflow/internal/config"
-	"codexflow/internal/httpapi"
-	"codexflow/internal/runtime"
+	"codexpocket/internal/config"
+	"codexpocket/internal/httpapi"
+	"codexpocket/internal/runtime"
 )
 
 func main() {
@@ -41,7 +41,7 @@ func main() {
 		_ = server.Shutdown(context.Background())
 	}()
 
-	logger.Info("codexflow agent listening", "addr", cfg.ListenAddr)
+	logger.Info("codexpocket agent listening", "addr", cfg.ListenAddr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("http server failed", "error", err)
 		os.Exit(1)

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"codexflow/internal/codex"
-	"codexflow/internal/config"
-	"codexflow/internal/store"
+	"codexpocket/internal/codex"
+	"codexpocket/internal/config"
+	"codexpocket/internal/store"
 )
 
 type Agent struct {

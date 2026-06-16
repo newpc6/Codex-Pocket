@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"codexflow/internal/codex"
-	"codexflow/internal/store"
+	"codexpocket/internal/codex"
+	"codexpocket/internal/store"
 	claudeagent "github.com/roasbeef/claude-agent-sdk-go"
 )
 

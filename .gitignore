@@ -30,10 +30,10 @@ coverage.out
 *.perspectivev3
 *.xcresult
 
-# CodexFlow local runtime state
-.codexflow/
-codexflow-state.db
-codexflow-state.db-*
+# CodexPocket local runtime state
+.codexpocket/
+codexpocket-state.db
+codexpocket-state.db-*
 
 # Flutter generated files
 flutter/codexflow/linux/flutter/generated_*
@@ -47,5 +47,5 @@ node_modules/
 .pnp.*
 
 # Config with secrets
-codexflow.yaml
+codexpocket.yaml
 doc

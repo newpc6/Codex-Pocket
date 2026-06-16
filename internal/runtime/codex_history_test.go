@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"codexflow/internal/codex"
+	"codexpocket/internal/codex"
 )
 
 func TestFlattenCodexMessageContentIncludesImages(t *testing.T) {

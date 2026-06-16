@@ -13,7 +13,7 @@
           </div>
           <div>
             <div class="brand-label">Session Console</div>
-            <h1 class="left-title">CodexFlow</h1>
+            <h1 class="left-title">CodexPocket</h1>
           </div>
         </div>
         <p class="left-desc">Codex 会话管理控制台，支持会话监控、审批处理、指令发送与实时交互。</p>
@@ -32,7 +32,7 @@
       <div class="login-shell">
         <div class="form-header">
           <div class="welcome-text">欢迎登录</div>
-          <div class="project-name">CodexFlow</div>
+          <div class="project-name">CodexPocket</div>
           <p class="form-desc">请输入账号信息完成身份验证。</p>
         </div>
         <el-form :model="form" :rules="rules" ref="formRef" label-width="0" :disabled="submitting">
@@ -57,7 +57,7 @@
           登录
         </el-button>
         <div class="login-footer">
-          <span>CodexFlow v0.1.0</span>
+          <span>CodexPocket v0.1.0</span>
           <span>安全登录入口</span>
         </div>
       </div>

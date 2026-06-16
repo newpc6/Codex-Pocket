@@ -1,4 +1,4 @@
-module codexflow
+module codexpocket
 
 go 1.26.0
 

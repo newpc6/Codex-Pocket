@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Probe local Claude Code CLI capabilities for CodexFlow integration planning.
+Probe local Claude Code CLI capabilities for CodexPocket integration planning.
 
 Usage:
   python3 scripts/claude_capability_probe.py

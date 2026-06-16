@@ -18,7 +18,7 @@
 
 ### 2. Live Session Streaming
 
-- keep CodexFlow and Codex app-server runtime state aligned with fewer polling fallbacks
+- keep CodexPocket and Codex app-server runtime state synchronized with fewer polling fallbacks
 - surface live command output, diff updates, and plan changes with minimal delay
 - add explicit connection diagnostics when Codex app-server notifications are missing
 

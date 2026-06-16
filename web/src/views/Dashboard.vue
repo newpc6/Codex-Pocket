@@ -37,7 +37,7 @@
           <el-button type="primary" link size="small">筛选</el-button>
         </div>
         <div class="stat-value">{{ stats.loadedSessions }}</div>
-        <div class="stat-desc">正在由 CodexFlow 托管</div>
+        <div class="stat-desc">正在由 CodexPocket 托管</div>
       </div>
       <div class="stat-card tone-cyan" :class="{ 'is-selected': filterByLifecycle === 'active' }" @click="setLifecycleFilter('active')">
         <div class="stat-head">

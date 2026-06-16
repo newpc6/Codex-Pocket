@@ -3,8 +3,8 @@ package runtime
 import (
 	"testing"
 
-	"codexflow/internal/codex"
-	"codexflow/internal/store"
+	"codexpocket/internal/codex"
+	"codexpocket/internal/store"
 )
 
 func TestDashboardLoadedSessionsExcludeEndedSessions(t *testing.T) {

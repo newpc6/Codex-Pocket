@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"codexflow/internal/config"
-	"codexflow/internal/runtime"
+	"codexpocket/internal/config"
+	"codexpocket/internal/runtime"
 )
 
 type Server struct {
@@ -866,7 +866,7 @@ func normalizeCWD(value string) string {
 }
 
 func isAllowedOrigin(origin string) bool {
-	override := strings.TrimSpace(os.Getenv("CODEXFLOW_ALLOWED_ORIGINS"))
+	override := strings.TrimSpace(os.Getenv("CODEXPOCKET_ALLOWED_ORIGINS"))
 	if override != "" {
 		return matchesAllowedOrigins(origin, override)
 	}
