@@ -15,7 +15,7 @@
 DerivedData/
 build/
 dist/
-
+dist
 # Go
 .gocache/
 coverage.out
