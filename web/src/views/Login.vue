@@ -338,16 +338,16 @@ async function handleLogin() {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    background: linear-gradient(180deg, #eef5ff 0%, #ffffff 100%);
+    background: linear-gradient(180deg, #2167d9 0%, #3388ff 50%, #f5f7fb 100%);
   }
 
   .login-left {
+    flex: 0 0 auto;
     min-height: auto;
     display: block;
-    padding: 30px 22px 86px;
-    background: linear-gradient(135deg, #1e63d6 0%, #2f80f6 62%, #46a3ff 100%);
-    border-radius: 0 0 28px 28px;
-    box-shadow: 0 18px 42px rgba(31, 111, 229, 0.18);
+    padding: 36px 24px 96px;
+    background: transparent;
+    box-shadow: none;
   }
 
   .login-left::after {
@@ -356,11 +356,13 @@ async function handleLogin() {
 
   .left-content {
     width: 100%;
-    max-width: 520px;
+    max-width: 360px;
     margin: 0 auto;
+    text-align: center;
   }
 
   .brand-lockup {
+    justify-content: center;
     gap: 14px;
     margin-bottom: 18px;
   }
@@ -368,8 +370,8 @@ async function handleLogin() {
   .logo-icon {
     width: 56px;
     height: 56px;
-    border-radius: 14px;
-    box-shadow: 0 12px 28px rgba(8, 28, 72, 0.2);
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(8, 28, 72, 0.24);
   }
 
   .brand-label {
@@ -384,26 +386,15 @@ async function handleLogin() {
   }
 
   .left-desc {
-    max-width: 440px;
-    margin-bottom: 18px;
-    font-size: 15px;
-    line-height: 1.75;
+    max-width: 320px;
+    margin: 0 auto;
+    font-size: 14px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.92);
   }
 
   .platform-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 0;
-  }
-
-  .platform-item {
-    min-height: 34px;
-    padding: 0 11px;
-    border-radius: 10px;
-    border-color: rgba(255, 255, 255, 0.3);
-    font-size: 13px;
-    background: rgba(255, 255, 255, 0.18);
-    backdrop-filter: blur(10px);
+    display: none;
   }
 
   .security-panel {
@@ -411,28 +402,30 @@ async function handleLogin() {
   }
 
   .login-right {
+    flex: 0 0 auto;
     width: 100%;
     min-width: 0;
     align-items: flex-start;
-    margin-top: -58px;
-    padding: 0 18px 30px;
+    margin-top: -72px;
+    padding: 0 18px 32px;
     border-left: none;
     background: transparent;
   }
 
   .login-shell {
     width: 100%;
-    max-width: 460px;
+    max-width: 380px;
     margin: 0 auto;
-    padding: 24px 20px 18px;
+    padding: 26px 22px 20px;
     border: 1px solid rgba(216, 230, 251, 0.95);
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow: 0 22px 52px rgba(15, 46, 106, 0.14);
+    border-radius: 22px;
+    background: #ffffff;
+    box-shadow: 0 24px 56px rgba(15, 46, 106, 0.18);
   }
 
   .form-header {
-    margin-bottom: 22px;
+    margin-bottom: 24px;
+    text-align: center;
   }
 
   .welcome-text {
@@ -441,8 +434,8 @@ async function handleLogin() {
   }
 
   .project-name {
-    font-size: 26px;
-    line-height: 34px;
+    font-size: 24px;
+    line-height: 32px;
   }
 
   .form-desc {
@@ -461,89 +454,18 @@ async function handleLogin() {
 }
 
 @media (max-width: 768px) {
-  .login-left {
-    padding: 24px 18px 70px;
-    border-radius: 0 0 24px 24px;
-  }
-
-  .left-content {
-    max-width: 430px;
-  }
-
-  .brand-lockup {
-    justify-content: center;
-    margin-bottom: 16px;
-  }
-
-  .logo-icon {
-    width: 54px;
-    height: 54px;
-  }
-
-  .brand-label {
-    font-size: 10px;
-    letter-spacing: 2.8px;
-  }
-
-  .left-title {
-    font-size: 29px;
-  }
-
-  .left-desc {
-    max-width: 390px;
-    margin: 0 auto 16px;
-    text-align: center;
-    font-size: 14px;
-    line-height: 1.7;
-  }
-
-  .platform-grid {
-    max-width: 390px;
-    margin: 0 auto;
-  }
-
-  .platform-item {
-    justify-content: center;
-  }
-
-  .platform-item:nth-child(n+5) {
-    display: none;
-  }
-
-  .login-right {
-    margin-top: -46px;
-    padding: 0 16px 26px;
-  }
-
-  .login-shell {
-    max-width: 430px;
-    padding: 22px 18px 18px;
-    border-radius: 18px;
-  }
-
-  .form-header {
-    text-align: center;
-  }
-}
-
-@media (max-width: 560px) {
   .v-login {
-    background: linear-gradient(180deg, #eef5ff 0%, #ffffff 100%);
+    background: linear-gradient(180deg, #2167d9 0%, #2f80f6 45%, #f5f7fb 100%);
   }
 
   .login-left {
-    padding: 22px 18px 74px;
-    border-radius: 0 0 24px 24px;
-  }
-
-  .brand-lockup {
-    justify-content: center;
-    margin-bottom: 16px;
+    padding: 32px 22px 88px;
   }
 
   .logo-icon {
     width: 52px;
     height: 52px;
+    border-radius: 14px;
   }
 
   .brand-label {
@@ -556,53 +478,97 @@ async function handleLogin() {
   }
 
   .left-desc {
-    max-width: 340px;
-    margin: 0 auto 16px;
-    text-align: center;
-    font-size: 14px;
-    line-height: 1.7;
-  }
-
-  .platform-grid {
-    grid-template-columns: 1fr 1fr;
-    max-width: 360px;
-    margin: 0 auto;
-  }
-
-  .platform-item {
-    min-width: 0;
-    justify-content: center;
-    padding: 0 8px;
-    white-space: nowrap;
-  }
-
-  .platform-item:nth-child(n+5) {
-    display: none;
+    max-width: 300px;
+    font-size: 13px;
+    line-height: 1.65;
   }
 
   .login-right {
-    margin-top: -48px;
+    margin-top: -68px;
+    padding: 0 16px 28px;
+  }
+
+  .login-shell {
+    max-width: 360px;
+    padding: 24px 20px 18px;
+    border-radius: 20px;
+  }
+
+  .project-name {
+    font-size: 22px;
+    line-height: 30px;
+  }
+}
+
+@media (max-width: 480px) {
+  .v-login {
+    background: linear-gradient(180deg, #2167d9 0%, #2f80f6 45%, #f5f7fb 100%);
+  }
+
+  .login-left {
+    padding: 28px 18px 80px;
+  }
+
+  .logo-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .brand-label {
+    font-size: 9px;
+    letter-spacing: 2.4px;
+  }
+
+  .left-title {
+    font-size: 26px;
+  }
+
+  .left-desc {
+    max-width: 280px;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  .login-right {
+    margin-top: -60px;
     padding: 0 14px 24px;
   }
 
   .login-shell {
-    padding: 22px 16px 16px;
+    max-width: 100%;
+    padding: 22px 18px 16px;
     border-radius: 18px;
   }
 
   .form-header {
-    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .project-name {
+    font-size: 21px;
+    line-height: 28px;
+  }
+
+  .form-desc {
+    font-size: 12px;
+  }
+
+  .login-shell :deep(.el-form-item) {
+    margin-bottom: 18px;
   }
 
   .login-shell :deep(.el-input__wrapper),
   .login-shell :deep(.el-button) {
-    height: 50px;
+    height: 48px;
   }
 
   .login-footer {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
     gap: 6px;
+    font-size: 11px;
   }
 }
 </style>
