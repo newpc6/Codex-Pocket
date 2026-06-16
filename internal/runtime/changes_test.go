@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestCleanChangePathsRejectsUnsafePaths(t *testing.T) {
 	cwd := t.TempDir()
@@ -31,7 +34,7 @@ func TestCleanChangePathsRejectsUnsafePaths(t *testing.T) {
 }
 
 func TestFilterChangedFilesHidesGeneratedAndZeroLineChanges(t *testing.T) {
-	files := filterChangedFiles([]ChangedFile{
+	files := filterChangedFiles(context.Background(), "", []ChangedFile{
 		{Path: "internal/runtime/changes.go", Status: "M", Additions: 12},
 		{Path: "a/internal/httpapi/server.go", Status: "M"},
 		{Path: "b/internal/store/store.go", Status: "M", Deletions: 3},

@@ -416,11 +416,11 @@ func readGitChanges(ctx context.Context, cwd string, scope ChangeScope, ref, bas
 		return SessionChanges{}, err
 	}
 
-	files := filterChangedFiles(parseNumstat(stat))
+	files := filterChangedFiles(ctx, cwd, parseNumstat(stat))
 	if scope == ChangeScopeWorkspace {
 		untracked, err := listUntrackedFiles(ctx, cwd)
 		if err == nil {
-			files = mergeUntracked(files, filterChangedFiles(untracked))
+			files = mergeUntracked(files, filterChangedFiles(ctx, cwd, untracked))
 		}
 	}
 	if strings.TrimSpace(filePath) != "" && len(files) == 0 {
@@ -537,12 +537,16 @@ func parseNumstat(output string) []ChangedFile {
 	return files
 }
 
-func filterChangedFiles(files []ChangedFile) []ChangedFile {
+func filterChangedFiles(ctx context.Context, cwd string, files []ChangedFile) []ChangedFile {
 	filtered := make([]ChangedFile, 0, len(files))
 	seen := make(map[string]struct{}, len(files))
+	ignored := gitIgnoredPathSet(ctx, cwd, files)
 	for _, file := range files {
 		file.Path = normalizeChangePath(file.Path)
 		file.OldPath = normalizeChangePath(file.OldPath)
+		if _, ok := ignored[file.Path]; ok {
+			continue
+		}
 		if !shouldShowChangedFile(file) {
 			continue
 		}
@@ -553,6 +557,36 @@ func filterChangedFiles(files []ChangedFile) []ChangedFile {
 		filtered = append(filtered, file)
 	}
 	return filtered
+}
+
+func gitIgnoredPathSet(ctx context.Context, cwd string, files []ChangedFile) map[string]struct{} {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		path := normalizeChangePath(file.Path)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return map[string]struct{}{}
+	}
+	cmd := exec.CommandContext(ctx, "git", "check-ignore", "--no-index", "--stdin")
+	cmd.Dir = cwd
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\n"))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
+		return map[string]struct{}{}
+	}
+	ignored := make(map[string]struct{})
+	for _, line := range strings.Split(string(out), "\n") {
+		path := normalizeChangePath(line)
+		if path != "" {
+			ignored[path] = struct{}{}
+		}
+	}
+	return ignored
 }
 
 func shouldShowChangedFile(file ChangedFile) bool {

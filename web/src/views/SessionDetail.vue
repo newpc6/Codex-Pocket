@@ -1203,6 +1203,7 @@ function extractChangedPathFromLine(line: string): string {
 function normalizeChangedPath(path: string): string {
   let value = path.trim().replace(/\\/g, '/')
   value = value.replace(/^"|"$/g, '')
+  value = value.replace(/^(\.\.\/)+/, '')
   value = value.replace(/^\.\//, '')
   value = value.replace(/^[ab]\//, '')
   if (!value || value.startsWith('-') || value.includes('://')) return ''
@@ -1217,21 +1218,36 @@ function isGeneratedChangePath(path: string): boolean {
   const value = normalizeChangedPath(path)
   return [
     'dist/',
+    'dist',
     'web/dist/',
+    'web/dist',
     'build/',
+    'build',
     'web/build/',
+    'web/build',
     'coverage/',
+    'coverage',
     'web/coverage/',
+    'web/coverage',
     'node_modules/',
+    'node_modules',
     'web/node_modules/',
-  ].some((prefix) => value.startsWith(prefix))
+    'web/node_modules',
+  ].some((prefix) => value === prefix || value.startsWith(`${prefix}/`))
 }
 
 function shouldDisplayChangedFile(file: DiffFileSummary): boolean {
   const path = normalizeChangedPath(file.path)
   if (!path || isGeneratedChangePath(path)) return false
+  if (!isProjectRelativeCodePath(path)) return false
   if (!isCodeChangePath(path)) return false
   return file.additions > 0 || file.deletions > 0
+}
+
+function isProjectRelativeCodePath(path: string): boolean {
+  if (path.startsWith('/') || path.includes('//')) return false
+  if (path.includes('/')) return true
+  return /^(app|main|index|server|client|vite\.config|webpack\.config|rollup\.config|postcss\.config|tailwind\.config)\./i.test(path)
 }
 
 function isCodeChangePath(path: string): boolean {
