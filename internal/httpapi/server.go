@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -331,6 +332,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, err)
 			return
 		}
+		s.dehydrateSessionImages(&detail)
 		writeJSON(w, http.StatusOK, detail)
 		return
 	}
@@ -777,6 +779,14 @@ func (s *Server) handleLocalImage(w http.ResponseWriter, r *http.Request) {
 		}
 		path = resolved
 	}
+	if inlineID, ok := strings.CutPrefix(path, "inline:"); ok {
+		resolved, err := s.uploads.Resolve(inlineID)
+		if err != nil {
+			writeErrorMessage(w, http.StatusNotFound, "inline image not found or expired")
+			return
+		}
+		path = resolved
+	}
 
 	file, err := os.Open(filepath.Clean(path))
 	if err != nil {
@@ -813,7 +823,7 @@ func (s *Server) handleLocalImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("Cache-Control", "private, max-age=86400, immutable")
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
@@ -921,6 +931,65 @@ func writeErrorMessage(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]any{
 		"error": message,
 	})
+}
+
+var (
+	markdownInlineImageRE = regexp.MustCompile(`!\[([^\]]*)\]\((data:image\/[^;\s)]+;base64,[^)]+)\)`)
+	attachedInlineImageRE = regexp.MustCompile(`\[Attached image:\s*(data:image\/[^\];]+;base64,[^\]]+)\]`)
+)
+
+func (s *Server) dehydrateSessionImages(detail *runtime.SessionDetail) {
+	if detail == nil {
+		return
+	}
+	for turnIdx := range detail.Turns {
+		for itemIdx := range detail.Turns[turnIdx].Items {
+			item := &detail.Turns[turnIdx].Items[itemIdx]
+			item.Body = s.dehydrateInlineImagesInText(item.Body)
+			item.Auxiliary = s.dehydrateInlineImagesInText(item.Auxiliary)
+		}
+	}
+}
+
+func (s *Server) dehydrateInlineImagesInText(value string) string {
+	if !strings.Contains(value, "data:image/") {
+		return value
+	}
+	value = markdownInlineImageRE.ReplaceAllStringFunc(value, func(match string) string {
+		parts := markdownInlineImageRE.FindStringSubmatch(match)
+		if len(parts) != 3 {
+			return match
+		}
+		ref := s.inlineImageReference(parts[2])
+		if ref == "" {
+			return match
+		}
+		return fmt.Sprintf("![%s](%s)", parts[1], ref)
+	})
+	value = attachedInlineImageRE.ReplaceAllStringFunc(value, func(match string) string {
+		parts := attachedInlineImageRE.FindStringSubmatch(match)
+		if len(parts) != 2 {
+			return match
+		}
+		ref := s.inlineImageReference(parts[1])
+		if ref == "" {
+			return match
+		}
+		return fmt.Sprintf("[Attached image: %s]", ref)
+	})
+	return value
+}
+
+func (s *Server) inlineImageReference(dataURL string) string {
+	item, ok, err := s.uploads.SaveInline(dataURL)
+	if err != nil {
+		s.logger.Warn("failed to cache inline image", "error", err)
+		return ""
+	}
+	if !ok || item.ID == "" {
+		return ""
+	}
+	return "inline:" + item.ID
 }
 
 func isClientFacingChangeError(err error) bool {

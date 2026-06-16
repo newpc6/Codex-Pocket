@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -79,6 +81,53 @@ func (s *imageUploadStore) Save(name string, payload []byte) (imageUpload, error
 	return item, nil
 }
 
+func (s *imageUploadStore) SaveInline(dataURL string) (imageUpload, bool, error) {
+	mediaType, payload, ok := parseInlineImageDataURL(dataURL)
+	if !ok {
+		return imageUpload{}, false, nil
+	}
+	if len(payload) == 0 {
+		return imageUpload{}, true, errors.New("empty inline image payload")
+	}
+	if len(payload) > maxUploadImageBytes {
+		return imageUpload{}, true, errors.New("inline image exceeds 15MB size limit")
+	}
+	if err := os.MkdirAll(s.baseDir, 0o755); err != nil {
+		return imageUpload{}, true, err
+	}
+
+	sum := sha256.Sum256(payload)
+	id := "inline-" + hex.EncodeToString(sum[:16])
+	ext := extForImageMediaType(mediaType)
+	fileName := id + ext
+	path := filepath.Join(s.baseDir, fileName)
+	now := time.Now().UTC()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.items[id]; ok {
+		if _, err := os.Stat(existing.Path); err == nil {
+			existing.CreatedAt = now
+			s.items[id] = existing
+			return existing, true, nil
+		}
+	}
+
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		return imageUpload{}, true, err
+	}
+	item := imageUpload{
+		ID:        id,
+		Name:      "inline-image" + ext,
+		Path:      path,
+		Size:      int64(len(payload)),
+		CreatedAt: now,
+	}
+	s.items[id] = item
+	s.cleanupLocked(now)
+	return item, true, nil
+}
+
 func (s *imageUploadStore) Resolve(uploadID string) (string, error) {
 	id := strings.TrimSpace(uploadID)
 	if id == "" {
@@ -97,6 +146,42 @@ func (s *imageUploadStore) Resolve(uploadID string) (string, error) {
 		return "", errors.New("uploaded image is unavailable")
 	}
 	return item.Path, nil
+}
+
+func parseInlineImageDataURL(value string) (string, []byte, bool) {
+	trimmed := strings.TrimSpace(value)
+	if !strings.HasPrefix(strings.ToLower(trimmed), "data:image/") {
+		return "", nil, false
+	}
+	header, encoded, ok := strings.Cut(trimmed, ",")
+	if !ok || !strings.Contains(strings.ToLower(header), ";base64") {
+		return "", nil, false
+	}
+	mediaType := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(strings.Split(header, ";")[0])), "data:")
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return "", nil, false
+	}
+	return mediaType, payload, true
+}
+
+func extForImageMediaType(mediaType string) string {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "image/png":
+		return ".png"
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	case "image/svg+xml":
+		return ".svg"
+	case "image/bmp":
+		return ".bmp"
+	default:
+		return ".img"
+	}
 }
 
 func (s *imageUploadStore) cleanupLocked(now time.Time) {

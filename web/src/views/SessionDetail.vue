@@ -1208,6 +1208,8 @@ function normalizeImagePath(rawPath: string): string {
   if (!trimmed) return ''
   if (/^(https?:)?\/\//i.test(trimmed)) return trimmed
   if (/^(data:image\/)/i.test(trimmed)) return trimmed
+  if (/^(inline:)/i.test(trimmed)) return trimmed
+  if (/^(upload:)/i.test(trimmed)) return trimmed
   if (/^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('/')) return trimmed
   return ''
 }
