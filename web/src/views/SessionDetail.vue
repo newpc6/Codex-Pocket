@@ -468,6 +468,11 @@
                   </button>
                 </div>
               </div>
+
+              <div v-if="shouldShowLiveActivityAfterTurn(turn)" class="activity-row is-latest">
+                <span class="activity-spinner"></span>
+                <span>{{ liveActivityText(turn) }}</span>
+              </div>
             </section>
           </template>
 
@@ -655,11 +660,7 @@
     </el-dialog>
 
     <div v-if="summary && !summary.ended" class="input-area">
-      <div v-if="runningTurn" class="streaming-hint">
-        <span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>{{ liveActivityText(runningTurn) }}</span>
-      </div>
-      <div v-else-if="!summary.loaded" class="input-status-hint">
+      <div v-if="!summary.loaded" class="input-status-hint">
         未接管会话，发送时会自动接管。
       </div>
       <div v-if="pendingImages.length > 0" class="pending-image-row">
@@ -1035,7 +1036,6 @@ function turnProcessSummary(turn: Turn): string {
 }
 
 function turnProcessedSummary(turn: Turn): string {
-  if (turn.status === 'inProgress') return liveActivityText(turn)
   return '已处理'
 }
 
@@ -1088,13 +1088,37 @@ function turnStatusText(turn: Turn): string {
 
 function shouldShowTurnActivity(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
+  if (shouldShowLiveActivityAfterTurn(turn)) return false
   if (isCompactingSession.value || isEditingFiles(turn)) return true
   if (turn.items.some((item) => isCommandLikeItem(item))) return true
   return !turn.items.some((item) => item.type === 'agentMessage' && item.body)
 }
 
+function shouldShowLiveActivityAfterTurn(turn: Turn): boolean {
+  if (turn.status !== 'inProgress') return false
+  return runningTurn.value?.id === turn.id && turnVisibleEntries(turn).length > 0
+}
+
 function isEditingFiles(turn: Turn): boolean {
-  return Boolean(turn.diff?.trim()) || turn.items.some((item) => item.type === 'fileChange')
+  if (Boolean(turn.diff?.trim()) || turn.items.some((item) => item.type === 'fileChange')) return true
+  return turn.items.some((item) => isFileMutationToolItem(item))
+}
+
+function isFileMutationToolItem(item: TurnItem): boolean {
+  const haystack = `${item.title || ''}\n${item.body || ''}\n${item.auxiliary || ''}\n${JSON.stringify(item.metadata || {})}`.toLowerCase()
+  return [
+    'apply_patch',
+    'update_file',
+    'write_file',
+    'edit_file',
+    'remove-item',
+    'new-item',
+    'set-content',
+    'add-content',
+    'git add',
+    'git restore',
+    'git checkout',
+  ].some((needle) => haystack.includes(needle))
 }
 
 function formatDurationMs(ms: number): string {
@@ -2357,8 +2381,7 @@ onUnmounted(() => {
   border-radius: 10px;
 }
 
-.live-indicator,
-.streaming-hint {
+.live-indicator {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2382,37 +2405,9 @@ onUnmounted(() => {
   animation: live-pulse 1.5s ease-in-out infinite;
 }
 
-.thinking-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 10px;
-}
-
-.thinking-dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--cf-warning);
-  animation: thinking-dot 1.2s ease-in-out infinite;
-}
-
-.thinking-dots span:nth-child(2) {
-  animation-delay: 0.16s;
-}
-
-.thinking-dots span:nth-child(3) {
-  animation-delay: 0.32s;
-}
-
 @keyframes live-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.8); }
-}
-
-@keyframes thinking-dot {
-  0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-2px); }
 }
 
 .session-meta {
@@ -2619,6 +2614,17 @@ onUnmounted(() => {
   color: var(--cf-text-secondary);
   font-size: 13px;
   font-weight: 600;
+}
+
+.activity-row.is-latest {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(255, 251, 235, 0.86);
+  color: #b45309;
+}
+
+.activity-row.is-latest .activity-spinner {
+  border-color: rgba(245, 158, 11, 0.24);
+  border-top-color: var(--cf-warning);
 }
 
 .activity-spinner {
