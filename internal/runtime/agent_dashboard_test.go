@@ -187,3 +187,55 @@ func TestSessionSummaryUsesManagedStateForLoadedFlag(t *testing.T) {
 		t.Fatalf("detached session lifecycle should not stay managed")
 	}
 }
+
+func TestMarkCodexThreadUnavailableDetachesRunningSession(t *testing.T) {
+	sessionStore, err := store.New(nil)
+	if err != nil {
+		t.Fatalf("create session store: %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID:            "missing-thread",
+		ModelProvider: "OpenAI",
+		CreatedAt:     100,
+		UpdatedAt:     200,
+		Status:        codex.ThreadStatus{Type: "active"},
+		CWD:           "/tmp/missing",
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "inProgress"},
+		},
+	})
+	sessionStore.SetSessionLoaded("missing-thread", true)
+	sessionStore.SetSessionManaged("missing-thread", true)
+
+	agent := &Agent{store: sessionStore, broker: NewBroker()}
+	agent.markCodexThreadUnavailable("missing-thread", "", "thread not found")
+
+	record, ok := sessionStore.SnapshotSession("missing-thread")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing record")
+	}
+	if record.Loaded {
+		t.Fatalf("missing thread should not stay loaded")
+	}
+	if record.Managed {
+		t.Fatalf("missing thread should not stay managed")
+	}
+	if got := record.Thread.Status.Type; got != "idle" {
+		t.Fatalf("status = %q, want idle", got)
+	}
+	if got := record.Thread.Turns[0].Status; got != "completed" {
+		t.Fatalf("turn status = %q, want completed", got)
+	}
+
+	summary := toSessionSummary(record, 0)
+	if summary.Loaded {
+		t.Fatalf("summary should not report missing thread as loaded")
+	}
+	if got := summary.Status; got != "idle" {
+		t.Fatalf("summary status = %q, want idle", got)
+	}
+	if got := summary.LastTurnStatus; got != "completed" {
+		t.Fatalf("summary last turn status = %q, want completed", got)
+	}
+}

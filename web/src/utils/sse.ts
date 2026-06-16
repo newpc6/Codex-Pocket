@@ -63,6 +63,10 @@ class SSEService {
       this.emit('session.resumed', this.parseEvent(e))
     })
 
+    this.source.addEventListener('session.detached', (e: MessageEvent) => {
+      this.emit('session.detached', this.parseEvent(e))
+    })
+
     this.source.addEventListener('session.ended', (e: MessageEvent) => {
       this.emit('session.ended', this.parseEvent(e))
     })

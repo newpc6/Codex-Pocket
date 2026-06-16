@@ -219,6 +219,16 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 		"threadId":     threadID,
 		"includeTurns": true,
 	}, &response); err != nil {
+		if isThreadNotFoundError(err) {
+			a.logger.Warn("codex thread is unavailable; detaching stale local session", "threadId", threadID, "error", err)
+			a.markCodexThreadUnavailable(threadID, "", "thread not found")
+			a.backfillCommitDiffs(ctx, threadID)
+			record, ok := a.store.SnapshotSession(threadID)
+			if !ok {
+				return SessionDetail{}, err
+			}
+			return paginateSessionDetail(toSessionDetail(record, pendingCountForThread(a.store.SnapshotPending(), threadID)), offset, limit), nil
+		}
 		if strings.Contains(err.Error(), "includeTurns is unavailable before first user message") {
 			record, ok := a.store.SnapshotSession(threadID)
 			if !ok {
@@ -766,6 +776,10 @@ func (a *Agent) ResumeSession(ctx context.Context, threadID string) (SessionSumm
 		"threadId":               threadID,
 		"persistExtendedHistory": true,
 	}, &response); err != nil {
+		if isThreadNotFoundError(err) {
+			a.logger.Warn("codex thread is unavailable; detaching stale local session", "threadId", threadID, "error", err)
+			a.markCodexThreadUnavailable(threadID, "", "thread not found")
+		}
 		return SessionSummary{}, err
 	}
 
@@ -1181,6 +1195,11 @@ func (a *Agent) InterruptTurn(ctx context.Context, threadID, turnID string) erro
 		"threadId": threadID,
 		"turnId":   turnID,
 	}, &response); err != nil {
+		if isThreadNotFoundError(err) {
+			a.logger.Warn("codex thread is unavailable during interrupt; detaching stale local session", "threadId", threadID, "turnId", turnID, "error", err)
+			a.markCodexThreadUnavailable(threadID, turnID, "thread not found")
+			return nil
+		}
 		if isNoActiveTurnError(err) {
 			a.logger.Warn("codex reported no active turn; reconciling local turn state", "threadId", threadID, "turnId", turnID, "error", err)
 			a.completeStaleCodexTurn(threadID, turnID)
@@ -1208,6 +1227,14 @@ func isNoActiveTurnError(err error) bool {
 	return strings.Contains(message, "no active turn")
 }
 
+func isThreadNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "thread not found")
+}
+
 func codexSessionIsActive(record store.SessionRecord) bool {
 	return record.Thread.Status.Type == "active" ||
 		record.Thread.Status.Type == "inProgress" ||
@@ -1223,6 +1250,51 @@ func (a *Agent) reconcileInactiveCodexTurn(threadID string, runtimeInactive bool
 		return
 	}
 	a.completeStaleCodexTurn(threadID, "")
+}
+
+func (a *Agent) markCodexThreadUnavailable(threadID, turnID, reason string) {
+	if isClaudeThreadID(threadID) {
+		return
+	}
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok {
+		return
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		turnID = lastInProgressCodexTurnID(record)
+	}
+	hadLiveState := record.Managed || record.Loaded || codexSessionIsActive(record) || turnID != ""
+
+	a.completeStaleCodexTurn(threadID, turnID)
+	a.store.SetSessionEnded(threadID, false)
+	a.store.SetSessionManaged(threadID, false)
+	a.store.SetSessionLoaded(threadID, false)
+	a.store.UpdateThreadStatus(threadID, codex.ThreadStatus{Type: "idle"})
+
+	if !hadLiveState || a.broker == nil {
+		return
+	}
+	turnPayload := map[string]string{"threadId": threadID}
+	if turnID != "" {
+		turnPayload["turnId"] = turnID
+	}
+	a.broker.Publish("turn.completed", turnPayload)
+	detachPayload := map[string]string{"threadId": threadID}
+	if strings.TrimSpace(reason) != "" {
+		detachPayload["reason"] = strings.TrimSpace(reason)
+	}
+	a.broker.Publish("session.detached", detachPayload)
+}
+
+func lastInProgressCodexTurnID(record store.SessionRecord) string {
+	for i := len(record.Thread.Turns) - 1; i >= 0; i-- {
+		turn := record.Thread.Turns[i]
+		if strings.TrimSpace(turn.Status) == "inProgress" {
+			return strings.TrimSpace(turn.ID)
+		}
+	}
+	return ""
 }
 
 func (a *Agent) completeStaleCodexTurn(threadID, turnID string) {
