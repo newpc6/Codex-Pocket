@@ -544,7 +544,31 @@
       <div v-else-if="!summary.loaded" class="input-status-hint">
         未接管会话，发送时会自动接管。
       </div>
+      <div v-if="pendingImages.length > 0" class="pending-image-row">
+        <div v-for="image in pendingImages" :key="image.id" class="pending-image-chip">
+          <span>{{ image.name }}</span>
+          <button type="button" @click="removePendingImage(image.id)">移除</button>
+        </div>
+      </div>
       <div class="input-row">
+        <el-dropdown trigger="click" @command="onInputAction">
+          <el-button class="input-plus-btn" :icon="Plus" circle :disabled="submitting" />
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="image">上传图片</el-dropdown-item>
+              <el-dropdown-item command="changes">文件变更</el-dropdown-item>
+              <el-dropdown-item command="review">审查改动</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <input
+          ref="imageInputRef"
+          class="hidden-file-input"
+          type="file"
+          accept="image/*"
+          multiple
+          @change="handleImageFiles"
+        />
         <el-input
           v-model="promptText"
           type="textarea"
@@ -553,8 +577,8 @@
           :disabled="submitting"
           @keydown.enter.exact.prevent="handleSubmit"
         />
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"
-          :disabled="!promptText.trim()" class="send-btn">
+        <el-button type="primary" :loading="submitting || uploadingImage" @click="handleSubmit"
+          :disabled="!promptText.trim() && pendingImages.length === 0" class="send-btn">
           {{ sendButtonLabel }}
         </el-button>
         <el-button v-if="runningTurn" type="warning" size="small" @click="handleInterrupt">
@@ -570,12 +594,13 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore, type ApprovalRequest, type ChangedFileDetail, type SessionChanges, type SessionSummary, type Turn, type TurnItem } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton, Loading } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton, Loading, Plus } from '@element-plus/icons-vue'
 import VueMarkdown from 'vue-markdown-render'
 import {
   formatTimestamp, statusTagType, statusLabel, lifecycleLabel,
   lifecycleTagType, truncateText, sessionDisplayName,
 } from '../utils/helpers'
+import api from '../utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -583,10 +608,12 @@ const app = useAppStore()
 const sessionId = route.params.id as string
 const promptText = ref('')
 const submitting = ref(false)
+const uploadingImage = ref(false)
 const resuming = ref(false)
 const detaching = ref(false)
 const reviewing = ref(false)
 const chatAreaRef = ref<HTMLElement | null>(null)
+const imageInputRef = ref<HTMLInputElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
 const pendingNewMessages = ref(0)
@@ -604,6 +631,7 @@ const reviewDialogOpen = ref(false)
 const reviewScope = ref('workspace')
 const reviewRef = ref('')
 const reviewBase = ref('main')
+const pendingImages = ref<Array<{ id: string; name: string; size: number }>>([])
 const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
@@ -785,12 +813,15 @@ function finalAgentEntry(turn: Turn): TurnItemEntry | undefined {
 
 function turnVisibleEntries(turn: Turn): TurnItemEntry[] {
   const entries = turnItemEntries(turn)
+  const userEntries = entries.filter((entry) => entry.item.type === 'userMessage')
   if (turn.status === 'inProgress') {
-    return entries.filter((entry) => entry.item.type === 'userMessage')
+    return userEntries
   }
   const finalEntry = finalAgentEntry(turn)
-  if (finalEntry) return [finalEntry]
-  return entries.filter((entry) => entry.item.type === 'userMessage' || entry.item.type === 'agentMessage').slice(-1)
+  if (finalEntry) return [...userEntries, finalEntry]
+  return userEntries.length > 0
+    ? userEntries
+    : entries.filter((entry) => entry.item.type === 'agentMessage').slice(-1)
 }
 
 function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
@@ -1317,10 +1348,11 @@ async function handleResume() {
 }
 
 async function handleSubmit() {
-  if (!promptText.value.trim()) return
+  if (!promptText.value.trim() && pendingImages.value.length === 0) return
   submitting.value = true
   try {
     const text = promptText.value
+    const imageIds = pendingImages.value.map((image) => image.id)
     const autoResume = !summary.value?.loaded
     if (autoResume) {
       resuming.value = true
@@ -1329,11 +1361,12 @@ async function handleSubmit() {
     }
     const activeTurn = runningTurn.value
     if (activeTurn?.id) {
-      await app.steerTurn(sessionId, activeTurn.id, text)
+      await app.steerTurn(sessionId, activeTurn.id, text, imageIds)
     } else {
-      await app.startTurn(sessionId, text)
+      await app.startTurn(sessionId, text, imageIds)
     }
     promptText.value = ''
+    pendingImages.value = []
     followLiveOutput.value = true
     ElMessage.success(autoResume ? '已接管并发送' : '指令已发送')
   } catch (e: any) {
@@ -1342,6 +1375,45 @@ async function handleSubmit() {
     resuming.value = false
     submitting.value = false
   }
+}
+
+function onInputAction(command: string) {
+  if (command === 'image') {
+    imageInputRef.value?.click()
+  } else if (command === 'changes') {
+    openChangesDrawer()
+  } else if (command === 'review') {
+    openReviewDialog()
+  }
+}
+
+async function handleImageFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (files.length === 0) return
+  uploadingImage.value = true
+  try {
+    for (const file of files) {
+      const data = new FormData()
+      data.append('file', file)
+      const res = await api.post('/uploads/image', data, { timeout: 60000 })
+      pendingImages.value.push({
+        id: res.data.id,
+        name: res.data.name || file.name,
+        size: res.data.size || file.size,
+      })
+    }
+    ElMessage.success(files.length > 1 ? `已添加 ${files.length} 张图片` : '图片已添加')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '图片上传失败')
+  } finally {
+    uploadingImage.value = false
+  }
+}
+
+function removePendingImage(id: string) {
+  pendingImages.value = pendingImages.value.filter((image) => image.id !== id)
 }
 
 async function handleDetach() {
@@ -2759,10 +2831,57 @@ onUnmounted(() => {
   line-height: 1.3;
 }
 
+.pending-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.pending-image-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  padding: 4px 8px;
+  border: 1px solid rgba(151, 194, 255, 0.78);
+  border-radius: 999px;
+  background: rgba(51, 136, 255, 0.08);
+  color: var(--cf-primary-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pending-image-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-image-chip button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .input-row {
   display: flex;
   align-items: flex-end;
   gap: 8px;
+}
+
+.input-plus-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
 }
 
 .input-row :deep(.el-textarea__inner) {
