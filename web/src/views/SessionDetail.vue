@@ -293,7 +293,10 @@
                           class="process-entry-card"
                           :class="`is-${processEntry.item.type}`"
                         >
-                          <div class="process-entry-head">
+                          <div
+                            v-if="processEntry.item.type !== 'agentMessage' && processEntry.item.type !== 'userMessage'"
+                            class="process-entry-head"
+                          >
                             <span>{{ processEntryTitle(processEntry.item) }}</span>
                             <span v-if="processEntry.item.status">{{ processEntry.item.status }}</span>
                           </div>
@@ -370,6 +373,11 @@
                           </details>
                         </div>
                       </template>
+
+                      <div v-if="shouldShowInlineLiveStatus(turn)" class="process-live-row">
+                        <span class="activity-spinner is-small"></span>
+                        <span>{{ liveActivityText(turn) }}</span>
+                      </div>
                     </div>
                   </details>
 
@@ -449,11 +457,6 @@
                   </div>
                   <div class="message-body">{{ turn.error }}</div>
                 </div>
-              </div>
-
-              <div v-if="shouldShowLiveActivityAfterTurn(turn)" class="activity-row is-latest">
-                <span class="activity-spinner"></span>
-                <span>{{ liveActivityText(turn) }}</span>
               </div>
 
               <div v-if="turnDisplayChangedFiles(turn).length > 0" class="turn-change-card">
@@ -1000,7 +1003,9 @@ function shouldRenderProcessInEntry(turn: Turn, entry: TurnItemEntry): boolean {
 }
 
 function hasTurnProcessContent(turn: Turn): boolean {
-  return turnProcessSummaryItems(turn).length > 0 || turnProcessFileEditSummary(turn).files.length > 0
+  return turnProcessSummaryItems(turn).length > 0
+    || turnProcessFileEditSummary(turn).files.length > 0
+    || shouldShowInlineLiveStatus(turn)
 }
 
 function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
@@ -1173,15 +1178,15 @@ function turnStatusText(turn: Turn): string {
 
 function shouldShowTurnActivity(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
-  if (shouldShowLiveActivityAfterTurn(turn)) return false
+  if (shouldShowInlineLiveStatus(turn)) return false
   if (isCompactingSession.value || isEditingFiles(turn)) return true
   if (turn.items.some((item) => isCommandLikeItem(item))) return true
   return !turn.items.some((item) => item.type === 'agentMessage' && item.body)
 }
 
-function shouldShowLiveActivityAfterTurn(turn: Turn): boolean {
+function shouldShowInlineLiveStatus(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
-  if (isEditingFiles(turn)) return false
+  if (turnProcessFileEditSummary(turn).files.length > 0) return false
   return runningTurn.value?.id === turn.id && turnVisibleEntries(turn).length > 0
 }
 
@@ -2788,7 +2793,7 @@ onUnmounted(() => {
 
 .turn-process.is-inline .turn-process-items {
   padding: 8px 0 0;
-  border-top: 1px solid rgba(216, 230, 251, 0.92);
+  border-top: 1px solid rgba(226, 232, 240, 0.95);
 }
 
 .process-summary-divider {
@@ -2825,37 +2830,37 @@ onUnmounted(() => {
 .turn-process-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   padding: 0 12px 12px;
   border-top: 1px solid rgba(216, 230, 251, 0.8);
 }
 
 .process-entry-card,
 .process-command-group {
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 10px;
-  background: #fff;
-  padding: 9px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .process-entry-card.is-agentMessage {
-  border-color: rgba(205, 223, 255, 0.95);
-  background: #fbfdff;
+  color: var(--cf-text-heavy);
 }
 
 .process-entry-head,
 .process-command-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   color: var(--cf-text-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .process-command-summary {
   cursor: pointer;
+  width: fit-content;
 }
 
 .process-command-list {
@@ -2866,19 +2871,19 @@ onUnmounted(() => {
 }
 
 .process-command-list .process-entry-card {
-  background: #f8fbff;
+  padding: 8px 0 0 18px;
+  border-left: 1px solid rgba(226, 232, 240, 0.95);
 }
 
 .process-entry-card.is-live-file-edit {
-  border-color: rgba(187, 247, 208, 0.95);
-  background: #fbfffc;
+  color: var(--cf-text-secondary);
 }
 
 .file-edit-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .file-edit-row {
@@ -2889,6 +2894,15 @@ onUnmounted(() => {
   min-height: 24px;
   color: var(--cf-text-secondary);
   font-size: 12px;
+}
+
+.process-live-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cf-text-lighter);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .file-edit-path {
