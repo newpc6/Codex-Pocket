@@ -29,3 +29,24 @@ func TestCleanChangePathsRejectsUnsafePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterChangedFilesHidesGeneratedAndZeroLineChanges(t *testing.T) {
+	files := filterChangedFiles([]ChangedFile{
+		{Path: "internal/runtime/changes.go", Status: "M", Additions: 12},
+		{Path: "a/internal/httpapi/server.go", Status: "M"},
+		{Path: "b/internal/store/store.go", Status: "M", Deletions: 3},
+		{Path: ".gitignore", Status: "M", Additions: 1, Deletions: 1},
+		{Path: "dist/index.html", Status: "??", Untracked: true},
+		{Path: "web/dist/assets/app.js", Status: "??", Untracked: true},
+	})
+
+	if len(files) != 2 {
+		t.Fatalf("len(files) = %d, want 2: %#v", len(files), files)
+	}
+	if files[0].Path != "internal/runtime/changes.go" {
+		t.Fatalf("files[0].Path = %q", files[0].Path)
+	}
+	if files[1].Path != "internal/store/store.go" {
+		t.Fatalf("files[1].Path = %q", files[1].Path)
+	}
+}

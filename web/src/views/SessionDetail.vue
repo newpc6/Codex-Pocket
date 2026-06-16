@@ -445,7 +445,7 @@
                 </div>
                 <div class="turn-change-list">
                   <button
-                    v-for="file in turnChangedFiles(turn)"
+                    v-for="file in visibleTurnChangedFiles(turn)"
                     :key="`${turn.id}-${file.path}`"
                     type="button"
                     class="turn-change-row"
@@ -456,6 +456,15 @@
                       <span class="diff-add">+{{ file.additions }}</span>
                       <span class="diff-del">-{{ file.deletions }}</span>
                     </span>
+                  </button>
+                  <button
+                    v-if="hiddenTurnChangeCount(turn) > 0"
+                    type="button"
+                    class="turn-change-more"
+                    @click="toggleTurnChangeExpanded(turn.id)"
+                  >
+                    <span>{{ expandedTurnChangeIds.has(turn.id) ? '收起文件' : `再显示 ${hiddenTurnChangeCount(turn)} 个文件` }}</span>
+                    <el-icon><ArrowRight /></el-icon>
                   </button>
                 </div>
               </div>
@@ -550,7 +559,19 @@
               <el-radio-button label="content">当前文件</el-radio-button>
             </el-radio-group>
           </div>
-          <pre v-if="fileViewMode === 'diff'" class="diff-block file-detail-code">{{ selectedFileDetail.diff || '没有可显示的 diff' }}</pre>
+          <div v-if="fileViewMode === 'diff'" class="diff-viewer file-detail-code">
+            <template v-if="diffLines(selectedFileDetail.diff).length">
+              <div
+                v-for="(line, index) in diffLines(selectedFileDetail.diff)"
+                :key="`${selectedFileDetail.path}-${index}`"
+                class="diff-line"
+                :class="diffLineClass(line)"
+              >
+                {{ line || ' ' }}
+              </div>
+            </template>
+            <div v-else class="diff-empty">没有可显示的 diff</div>
+          </div>
           <pre v-else-if="selectedFileDetail.readable" class="file-content-block file-detail-code">{{ selectedFileDetail.content }}</pre>
           <div v-else class="file-readable-error">{{ selectedFileDetail.error || '无法预览这个文件' }}</div>
           <div v-if="selectedFileDetail.truncated" class="file-truncated-note">文件较大，已截断预览。</div>
@@ -558,18 +579,75 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="reviewDialogOpen" title="审查改动" width="420px" :close-on-click-modal="false">
+    <el-dialog
+      v-model="reviewDialogOpen"
+      title="审查改动"
+      :width="isMobile ? '92%' : '760px'"
+      class="review-dialog"
+      :close-on-click-modal="false"
+    >
       <el-form label-width="82px">
         <el-form-item label="范围">
-          <el-segmented v-model="reviewScope" :options="changeScopeOptions" />
+          <el-segmented v-model="reviewScope" :options="changeScopeOptions" @change="reloadReviewPreview" />
         </el-form-item>
         <el-form-item v-if="reviewScope === 'commit'" label="Commit">
-          <el-input v-model="reviewRef" placeholder="commit hash" />
+          <el-input v-model="reviewRef" placeholder="commit hash" @keyup.enter="reloadReviewPreview" />
         </el-form-item>
         <el-form-item v-if="reviewScope === 'base'" label="Base">
-          <el-input v-model="reviewBase" placeholder="main / develop / origin/main" />
+          <el-input v-model="reviewBase" placeholder="main / develop / origin/main" @keyup.enter="reloadReviewPreview" />
         </el-form-item>
       </el-form>
+
+      <div class="review-preview">
+        <div class="review-preview-head">
+          <div v-if="reviewPreview" class="changes-summary-row is-review">
+            <span>已编辑 {{ reviewPreview.summary.files }} 个文件</span>
+            <span class="diff-add">+{{ reviewPreview.summary.additions }}</span>
+            <span class="diff-del">-{{ reviewPreview.summary.deletions }}</span>
+          </div>
+          <el-button size="small" :icon="Refresh" :loading="reviewPreviewLoading" @click="reloadReviewPreview">刷新</el-button>
+        </div>
+        <el-alert
+          v-if="reviewPreviewError"
+          :title="reviewPreviewError"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+        <div v-else-if="reviewPreviewLoading && !reviewPreview" class="review-loading">正在加载改动…</div>
+        <el-empty v-else-if="reviewPreview && reviewPreview.files.length === 0" description="当前范围没有代码改动" />
+        <template v-else-if="reviewPreview">
+          <div class="review-file-strip">
+            <button
+              v-for="file in reviewPreview.files"
+              :key="file.path"
+              type="button"
+              class="review-file-chip"
+              :class="{ 'is-selected': selectedReviewFile === file.path }"
+              @click="selectReviewFile(file.path)"
+            >
+              <span>{{ file.path }}</span>
+              <span>
+                <span class="diff-add">+{{ file.additions }}</span>
+                <span class="diff-del">-{{ file.deletions }}</span>
+              </span>
+            </button>
+          </div>
+          <div class="diff-viewer review-diff-viewer">
+            <template v-if="reviewDiffLines.length">
+              <div
+                v-for="(line, index) in reviewDiffLines"
+                :key="`review-${selectedReviewFile}-${index}`"
+                class="diff-line"
+                :class="diffLineClass(line)"
+              >
+                {{ line || ' ' }}
+              </div>
+            </template>
+            <div v-else class="diff-empty">请选择文件查看 diff</div>
+          </div>
+        </template>
+      </div>
       <template #footer>
         <el-button @click="reviewDialogOpen = false">取消</el-button>
         <el-button type="primary" :loading="reviewing" @click="handleStartReview">开始审查</el-button>
@@ -672,6 +750,12 @@ const reviewDialogOpen = ref(false)
 const reviewScope = ref('workspace')
 const reviewRef = ref('')
 const reviewBase = ref('main')
+const reviewPreview = ref<SessionChanges | null>(null)
+const reviewPreviewLoading = ref(false)
+const reviewPreviewError = ref('')
+const selectedReviewFile = ref('')
+const selectedReviewFileDetail = ref<ChangedFileDetail | null>(null)
+const expandedTurnChangeIds = ref(new Set<string>())
 const pendingImages = ref<Array<{ id: string; name: string; size: number }>>([])
 const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
@@ -701,6 +785,7 @@ type TurnTimelineBlock = {
 type DiffFileSummary = { path: string; additions: number; deletions: number }
 type DiffSummary = { files: DiffFileSummary[]; additions: number; deletions: number }
 type MessageImage = { url: string; alt: string; index: number }
+const turnChangePreviewLimit = 2
 const diffSummaryCache = new Map<string, DiffSummary>()
 const changeScopeOptions = [
   { label: '工作区', value: 'workspace' },
@@ -730,6 +815,7 @@ const runningTurn = computed(() => {
   }
   return undefined
 })
+const reviewDiffLines = computed(() => diffLines(selectedReviewFileDetail.value?.diff || ''))
 const isStreamingReply = computed(() => {
   const turn = runningTurn.value
   if (!turn) return false
@@ -1046,10 +1132,12 @@ function diffSummary(diff: string): DiffSummary {
     if (line.startsWith('-') && !line.startsWith('---')) current.deletions += 1
   }
   const result = {
-    files,
-    additions: files.reduce((sum, file) => sum + file.additions, 0),
-    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    files: filterDisplayChangedFiles(files),
+    additions: 0,
+    deletions: 0,
   }
+  result.additions = result.files.reduce((sum, file) => sum + file.additions, 0)
+  result.deletions = result.files.reduce((sum, file) => sum + file.deletions, 0)
   diffSummaryCache.set(diff || '', result)
   return result
 }
@@ -1071,7 +1159,7 @@ function turnChangedFiles(turn: Turn): DiffFileSummary[] {
       }
     }
   }
-  return Array.from(byPath.values())
+  return filterDisplayChangedFiles(Array.from(byPath.values()))
 }
 
 function fileChangesFromItem(item: TurnItem): DiffFileSummary[] {
@@ -1083,13 +1171,15 @@ function fileChangesFromItem(item: TurnItem): DiffFileSummary[] {
     if (!path || seen.has(path)) continue
     seen.add(path)
     const nums = (line.match(/[+-]\d+/g) || []).map((value) => Number(value))
+    const additions = Math.max(...nums.filter((value) => value > 0), 0)
+    const deletions = Math.abs(Math.min(...nums.filter((value) => value < 0), 0))
     files.push({
       path,
-      additions: Math.max(...nums.filter((value) => value > 0), 0),
-      deletions: Math.abs(Math.min(...nums.filter((value) => value < 0), 0)),
+      additions,
+      deletions,
     })
   }
-  return files
+  return filterDisplayChangedFiles(files)
 }
 
 function extractChangedPathFromLine(line: string): string {
@@ -1114,12 +1204,86 @@ function normalizeChangedPath(path: string): string {
   let value = path.trim().replace(/\\/g, '/')
   value = value.replace(/^"|"$/g, '')
   value = value.replace(/^\.\//, '')
+  value = value.replace(/^[ab]\//, '')
   if (!value || value.startsWith('-') || value.includes('://')) return ''
   if (value.includes(' => ')) {
     const parts = value.split(' => ')
     value = parts[parts.length - 1].trim()
   }
   return value
+}
+
+function isGeneratedChangePath(path: string): boolean {
+  const value = normalizeChangedPath(path)
+  return [
+    'dist/',
+    'web/dist/',
+    'build/',
+    'web/build/',
+    'coverage/',
+    'web/coverage/',
+    'node_modules/',
+    'web/node_modules/',
+  ].some((prefix) => value.startsWith(prefix))
+}
+
+function shouldDisplayChangedFile(file: DiffFileSummary): boolean {
+  const path = normalizeChangedPath(file.path)
+  if (!path || isGeneratedChangePath(path)) return false
+  if (!isCodeChangePath(path)) return false
+  return file.additions > 0 || file.deletions > 0
+}
+
+function isCodeChangePath(path: string): boolean {
+  return /\.(go|tsx?|jsx?|mjs|cjs|vue|css|scss|sass|less|html|rs|py|java|kt|swift|c|cc|cpp|h|hpp|cs|sql|sh|ps1|bat|cmd|svelte)$/i.test(path)
+}
+
+function filterDisplayChangedFiles(files: DiffFileSummary[]): DiffFileSummary[] {
+  const byPath = new Map<string, DiffFileSummary>()
+  for (const file of files) {
+    const path = normalizeChangedPath(file.path)
+    const normalized = { ...file, path }
+    if (!shouldDisplayChangedFile(normalized)) continue
+    const existing = byPath.get(path)
+    if (existing) {
+      existing.additions = Math.max(existing.additions, normalized.additions)
+      existing.deletions = Math.max(existing.deletions, normalized.deletions)
+    } else {
+      byPath.set(path, normalized)
+    }
+  }
+  return Array.from(byPath.values())
+}
+
+function visibleTurnChangedFiles(turn: Turn): DiffFileSummary[] {
+  const files = turnChangedFiles(turn)
+  if (expandedTurnChangeIds.value.has(turn.id)) return files
+  return files.slice(0, turnChangePreviewLimit)
+}
+
+function hiddenTurnChangeCount(turn: Turn): number {
+  if (expandedTurnChangeIds.value.has(turn.id)) return 0
+  return Math.max(turnChangedFiles(turn).length - turnChangePreviewLimit, 0)
+}
+
+function toggleTurnChangeExpanded(turnID: string) {
+  const next = new Set(expandedTurnChangeIds.value)
+  if (next.has(turnID)) next.delete(turnID)
+  else next.add(turnID)
+  expandedTurnChangeIds.value = next
+}
+
+function diffLines(diff: string): string[] {
+  return (diff || '').split('\n').filter((line) => line.length > 0)
+}
+
+function diffLineClass(line: string) {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'is-meta'
+  if (line.startsWith('+')) return 'is-add'
+  if (line.startsWith('-')) return 'is-del'
+  if (line.startsWith('@@')) return 'is-hunk'
+  if (line.startsWith('diff --git')) return 'is-file'
+  return ''
 }
 
 function renderMarkdown(source: string): string {
@@ -1241,9 +1405,16 @@ function turnNumber(id: string) {
 
 function setChatScrollToBottom(force = false) {
   const el = chatAreaRef.value
-  if (!el) return
+  if (!el) {
+    if (force || followLiveOutput.value) window.scrollTo({ top: document.documentElement.scrollHeight })
+    return
+  }
   if (!force && !followLiveOutput.value) return
   el.scrollTop = el.scrollHeight
+  if (isMobile.value) {
+    window.scrollTo({ top: document.documentElement.scrollHeight })
+    document.scrollingElement?.scrollTo({ top: document.scrollingElement.scrollHeight })
+  }
 }
 
 function scrollChatToBottom(force = false) {
@@ -1261,6 +1432,7 @@ async function scrollChatToBottomAfterLayout(force = false) {
   })
   window.setTimeout(() => setChatScrollToBottom(force), 120)
   window.setTimeout(() => setChatScrollToBottom(force), 360)
+  window.setTimeout(() => setChatScrollToBottom(force), 800)
 }
 
 function handleMessageAssetLoad() {
@@ -1326,6 +1498,14 @@ function changeQuery(scope = changeScope.value) {
   }
 }
 
+function reviewQuery(scope = reviewScope.value) {
+  return {
+    scope,
+    ref: scope === 'commit' ? reviewRef.value.trim() : '',
+    base: scope === 'base' ? reviewBase.value.trim() : '',
+  }
+}
+
 async function openChangesDrawer() {
   changesDrawerOpen.value = true
   await reloadChanges()
@@ -1378,6 +1558,7 @@ function reviewTurnChanges(_turn: Turn) {
   reviewRef.value = ''
   reviewBase.value = changeBase.value || 'main'
   reviewDialogOpen.value = true
+  reloadReviewPreview()
 }
 
 async function revertTurnChanges(turn: Turn) {
@@ -1416,6 +1597,43 @@ function openReviewDialog() {
   reviewRef.value = changeRef.value
   reviewBase.value = changeBase.value
   reviewDialogOpen.value = true
+  reloadReviewPreview()
+}
+
+async function reloadReviewPreview() {
+  reviewPreviewLoading.value = true
+  reviewPreviewError.value = ''
+  selectedReviewFile.value = ''
+  selectedReviewFileDetail.value = null
+  try {
+    const data = await app.loadSessionChanges(sessionId, reviewQuery())
+    data.files = data.files.filter((file) => shouldDisplayChangedFile(file))
+    data.summary.files = data.files.length
+    data.summary.additions = data.files.reduce((sum, file) => sum + file.additions, 0)
+    data.summary.deletions = data.files.reduce((sum, file) => sum + file.deletions, 0)
+    reviewPreview.value = data
+    const firstFile = data.files?.[0]
+    if (firstFile) {
+      await selectReviewFile(firstFile.path)
+    }
+  } catch (e: any) {
+    reviewPreview.value = null
+    reviewPreviewError.value = e.response?.data?.error || '读取审查内容失败'
+  } finally {
+    reviewPreviewLoading.value = false
+  }
+}
+
+async function selectReviewFile(path: string) {
+  if (!path) return
+  selectedReviewFile.value = path
+  try {
+    const data = await app.loadSessionChanges(sessionId, { ...reviewQuery(), file: path })
+    selectedReviewFileDetail.value = data.file || null
+  } catch (e: any) {
+    selectedReviewFileDetail.value = null
+    ElMessage.error(e.response?.data?.error || '读取 diff 失败')
+  }
 }
 
 async function handleStartReview() {
@@ -2986,6 +3204,26 @@ onUnmounted(() => {
   background: #f8fbff;
 }
 
+.turn-change-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 0;
+  background: #fff;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.turn-change-more:hover {
+  color: var(--cf-primary-dark);
+  background: #f8fbff;
+}
+
 .file-detail-panel {
   flex: 1;
   min-height: 0;
@@ -3017,6 +3255,111 @@ onUnmounted(() => {
   min-height: 180px;
   max-height: none;
   overflow: auto;
+}
+
+.diff-viewer {
+  margin: 0;
+  padding: 8px 0;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow: auto;
+}
+
+.diff-line {
+  min-height: 18px;
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.diff-line.is-add {
+  background: #e8f7ed;
+  color: #047857;
+}
+
+.diff-line.is-del {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+.diff-line.is-hunk {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.diff-line.is-file,
+.diff-line.is-meta {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 650;
+}
+
+.diff-empty,
+.review-loading {
+  padding: 16px;
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+}
+
+.review-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.changes-summary-row.is-review {
+  flex: 1;
+}
+
+.review-file-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.review-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--cf-text-heavy);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.review-file-chip > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-file-chip.is-selected {
+  border-color: rgba(51, 136, 255, 0.8);
+  background: #eef6ff;
+}
+
+.review-diff-viewer {
+  max-height: 420px;
 }
 
 .file-content-block {

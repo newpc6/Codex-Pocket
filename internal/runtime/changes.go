@@ -416,11 +416,11 @@ func readGitChanges(ctx context.Context, cwd string, scope ChangeScope, ref, bas
 		return SessionChanges{}, err
 	}
 
-	files := parseNumstat(stat)
+	files := filterChangedFiles(parseNumstat(stat))
 	if scope == ChangeScopeWorkspace {
 		untracked, err := listUntrackedFiles(ctx, cwd)
 		if err == nil {
-			files = mergeUntracked(files, untracked)
+			files = mergeUntracked(files, filterChangedFiles(untracked))
 		}
 	}
 	if strings.TrimSpace(filePath) != "" && len(files) == 0 {
@@ -537,6 +537,77 @@ func parseNumstat(output string) []ChangedFile {
 	return files
 }
 
+func filterChangedFiles(files []ChangedFile) []ChangedFile {
+	filtered := make([]ChangedFile, 0, len(files))
+	seen := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		file.Path = normalizeChangePath(file.Path)
+		file.OldPath = normalizeChangePath(file.OldPath)
+		if !shouldShowChangedFile(file) {
+			continue
+		}
+		if _, ok := seen[file.Path]; ok {
+			continue
+		}
+		seen[file.Path] = struct{}{}
+		filtered = append(filtered, file)
+	}
+	return filtered
+}
+
+func shouldShowChangedFile(file ChangedFile) bool {
+	path := normalizeChangePath(file.Path)
+	if path == "" || isGeneratedChangePath(path) || !isCodeChangePath(path) {
+		return false
+	}
+	if file.Binary {
+		return false
+	}
+	return file.Additions > 0 || file.Deletions > 0
+}
+
+func normalizeChangePath(path string) string {
+	value := filepath.ToSlash(strings.TrimSpace(path))
+	value = strings.Trim(value, `"`)
+	value = strings.TrimPrefix(value, "./")
+	value = strings.TrimPrefix(value, "a/")
+	value = strings.TrimPrefix(value, "b/")
+	return value
+}
+
+func isGeneratedChangePath(path string) bool {
+	value := normalizeChangePath(path)
+	if value == "" {
+		return false
+	}
+	generatedPrefixes := []string{
+		"dist/",
+		"web/dist/",
+		"build/",
+		"web/build/",
+		"coverage/",
+		"web/coverage/",
+		"node_modules/",
+		"web/node_modules/",
+	}
+	for _, prefix := range generatedPrefixes {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCodeChangePath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(normalizeChangePath(path)))
+	switch ext {
+	case ".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".css", ".scss", ".sass", ".less", ".html", ".rs", ".py", ".java", ".kt", ".swift", ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".sql", ".sh", ".ps1", ".bat", ".cmd", ".svelte":
+		return true
+	default:
+		return false
+	}
+}
+
 func parseNumstatValue(value string) (int, bool) {
 	if value == "-" {
 		return 0, true
@@ -576,9 +647,43 @@ func listUntrackedFiles(ctx context.Context, cwd string) ([]ChangedFile, error) 
 		if path == "" {
 			continue
 		}
-		files = append(files, ChangedFile{Path: path, Status: "??", Untracked: true})
+		additions, binary := countUntrackedFileLines(cwd, path)
+		files = append(files, ChangedFile{
+			Path:      path,
+			Status:    "??",
+			Additions: additions,
+			Binary:    binary,
+			Untracked: true,
+		})
 	}
 	return files, nil
+}
+
+func countUntrackedFileLines(cwd, relPath string) (int, bool) {
+	cleanCWD, err := filepath.Abs(cwd)
+	if err != nil {
+		return 0, false
+	}
+	candidate := filepath.Clean(filepath.Join(cleanCWD, filepath.FromSlash(relPath)))
+	rel, err := filepath.Rel(cleanCWD, candidate)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return 0, false
+	}
+	data, err := os.ReadFile(candidate)
+	if err != nil {
+		return 0, false
+	}
+	if !utf8.Valid(data) {
+		return 0, true
+	}
+	if len(data) == 0 {
+		return 0, false
+	}
+	lines := bytes.Count(data, []byte{'\n'})
+	if data[len(data)-1] != '\n' {
+		lines++
+	}
+	return lines, false
 }
 
 func mergeUntracked(files []ChangedFile, untracked []ChangedFile) []ChangedFile {
