@@ -5,7 +5,7 @@
         <div v-if="isMobile" class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
           <el-icon :size="20"><Operation /></el-icon>
         </div>
-        <img class="brand-mark" src="/favicon.svg?v=3" alt="CodexPocket" />
+        <img class="brand-mark" :src="brandIcon" alt="CodexPocket" />
         <div v-if="!isMobile" class="brand-text">
           <div class="brand-title">CodexPocket</div>
           <div class="brand-subtitle">Session Console</div>
@@ -120,6 +120,7 @@ import { useAuthStore } from '../stores/auth'
 import { useTabsStore } from '../stores/tabs'
 import { sseService } from '../utils/sse'
 import { ElNotification } from 'element-plus'
+import brandIcon from '../../public/favicon.svg'
 
 const route = useRoute()
 const router = useRouter()

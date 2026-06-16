@@ -3,7 +3,7 @@
     <section class="login-left">
       <div class="left-content">
         <div class="brand-lockup">
-          <img class="logo-icon" src="/favicon.svg?v=3" alt="CodexPocket" />
+          <img class="logo-icon" :src="brandIcon" alt="CodexPocket" />
           <div>
             <div class="brand-label">Session Console</div>
             <h1 class="left-title">CodexPocket</h1>
@@ -63,6 +63,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import brandIcon from '../../public/favicon.svg'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -332,12 +333,276 @@ async function handleLogin() {
 }
 
 @media (max-width: 980px) {
-  .login-left { display: none; }
-  .login-right { width: 100%; min-width: 0; border-left: none; }
+  .v-login {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #eef5ff 0%, #ffffff 100%);
+  }
+
+  .login-left {
+    min-height: auto;
+    display: block;
+    padding: 30px 22px 86px;
+    background: linear-gradient(135deg, #1e63d6 0%, #2f80f6 62%, #46a3ff 100%);
+    border-radius: 0 0 28px 28px;
+    box-shadow: 0 18px 42px rgba(31, 111, 229, 0.18);
+  }
+
+  .login-left::after {
+    display: none;
+  }
+
+  .left-content {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  .brand-lockup {
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .logo-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    box-shadow: 0 12px 28px rgba(8, 28, 72, 0.2);
+  }
+
+  .brand-label {
+    margin-bottom: 4px;
+    font-size: 11px;
+    letter-spacing: 3px;
+  }
+
+  .left-title {
+    font-size: 30px;
+    line-height: 1.1;
+  }
+
+  .left-desc {
+    max-width: 440px;
+    margin-bottom: 18px;
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  .platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 0;
+  }
+
+  .platform-item {
+    min-height: 34px;
+    padding: 0 11px;
+    border-radius: 10px;
+    border-color: rgba(255, 255, 255, 0.3);
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(10px);
+  }
+
+  .security-panel {
+    display: none;
+  }
+
+  .login-right {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+    margin-top: -58px;
+    padding: 0 18px 30px;
+    border-left: none;
+    background: transparent;
+  }
+
+  .login-shell {
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 24px 20px 18px;
+    border: 1px solid rgba(216, 230, 251, 0.95);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 22px 52px rgba(15, 46, 106, 0.14);
+  }
+
+  .form-header {
+    margin-bottom: 22px;
+  }
+
+  .welcome-text {
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+
+  .project-name {
+    font-size: 26px;
+    line-height: 34px;
+  }
+
+  .form-desc {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+
+  .login-shell :deep(.el-form-item) {
+    margin-bottom: 22px;
+  }
+
+  .login-shell :deep(.el-input__wrapper) {
+    background: #ffffff;
+    box-shadow: 0 0 0 1px #dbe6f5 inset, 0 8px 18px rgba(15, 46, 106, 0.04);
+  }
+}
+
+@media (max-width: 768px) {
+  .login-left {
+    padding: 24px 18px 70px;
+    border-radius: 0 0 24px 24px;
+  }
+
+  .left-content {
+    max-width: 430px;
+  }
+
+  .brand-lockup {
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .logo-icon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .brand-label {
+    font-size: 10px;
+    letter-spacing: 2.8px;
+  }
+
+  .left-title {
+    font-size: 29px;
+  }
+
+  .left-desc {
+    max-width: 390px;
+    margin: 0 auto 16px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .platform-grid {
+    max-width: 390px;
+    margin: 0 auto;
+  }
+
+  .platform-item {
+    justify-content: center;
+  }
+
+  .platform-item:nth-child(n+5) {
+    display: none;
+  }
+
+  .login-right {
+    margin-top: -46px;
+    padding: 0 16px 26px;
+  }
+
+  .login-shell {
+    max-width: 430px;
+    padding: 22px 18px 18px;
+    border-radius: 18px;
+  }
+
+  .form-header {
+    text-align: center;
+  }
 }
 
 @media (max-width: 560px) {
-  .login-right { padding: 28px; }
-  .login-shell { width: 100%; }
+  .v-login {
+    background: linear-gradient(180deg, #eef5ff 0%, #ffffff 100%);
+  }
+
+  .login-left {
+    padding: 22px 18px 74px;
+    border-radius: 0 0 24px 24px;
+  }
+
+  .brand-lockup {
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .logo-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .brand-label {
+    font-size: 10px;
+    letter-spacing: 2.6px;
+  }
+
+  .left-title {
+    font-size: 28px;
+  }
+
+  .left-desc {
+    max-width: 340px;
+    margin: 0 auto 16px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .platform-grid {
+    grid-template-columns: 1fr 1fr;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  .platform-item {
+    min-width: 0;
+    justify-content: center;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
+  .platform-item:nth-child(n+5) {
+    display: none;
+  }
+
+  .login-right {
+    margin-top: -48px;
+    padding: 0 14px 24px;
+  }
+
+  .login-shell {
+    padding: 22px 16px 16px;
+    border-radius: 18px;
+  }
+
+  .form-header {
+    text-align: center;
+  }
+
+  .login-shell :deep(.el-input__wrapper),
+  .login-shell :deep(.el-button) {
+    height: 50px;
+  }
+
+  .login-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
 }
 </style>
