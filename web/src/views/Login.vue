@@ -3,7 +3,7 @@
     <section class="login-left">
       <div class="left-content">
         <div class="brand-lockup">
-          <img class="logo-icon" src="/favicon.svg?v=2" alt="CodexPocket" />
+          <img class="logo-icon" src="/favicon.svg?v=3" alt="CodexPocket" />
           <div>
             <div class="brand-label">Session Console</div>
             <h1 class="left-title">CodexPocket</h1>

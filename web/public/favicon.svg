@@ -1,20 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="16" fill="#0B1226"/>
-  <path d="M14 18C14 13.582 17.582 10 22 10H46C50.418 10 54 13.582 54 18V40C54 44.418 50.418 48 46 48H30.5L21.8 55.2C20.83 56.003 19.36 55.313 19.36 54.053V47.57C16.229 46.522 14 43.563 14 40V18Z" fill="url(#paint0_linear)"/>
-  <path d="M22 22H37" stroke="white" stroke-width="4" stroke-linecap="round"/>
-  <path d="M22 32H31" stroke="white" stroke-opacity=".78" stroke-width="4" stroke-linecap="round"/>
-  <path d="M38.7 23.2L30.9 35.6H38.1L34.9 47.4L47 31.6H39.3L42.9 23.2H38.7Z" fill="#FFFFFF"/>
-  <path d="M38.7 23.2L30.9 35.6H38.1L34.9 47.4L47 31.6H39.3L42.9 23.2H38.7Z" fill="url(#paint1_linear)" fill-opacity=".35"/>
-  <path d="M46 11C50.418 11 53 14.582 53 19V38.5" stroke="white" stroke-opacity=".22" stroke-width="2" stroke-linecap="round"/>
+  <rect x="3" y="3" width="58" height="58" rx="15" fill="#FFFFFF"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" stroke="#D8E6FB" stroke-width="2"/>
+  <rect x="15" y="9" width="34" height="46" rx="9" fill="url(#phoneGradient)"/>
+  <rect x="20" y="15" width="24" height="19" rx="5" fill="#FFFFFF"/>
+  <path d="M24 22L28 25L24 28" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M31 28H39" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M22 40H34" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M22 46H41" stroke="#BFDBFE" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="43" cy="18" r="4" fill="#22C55E"/>
+  <circle cx="43" cy="18" r="6.5" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M48 43C51.3 43 54 40.3 54 37V28" stroke="#93C5FD" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M54 28L57 31M54 28L51 31" stroke="#93C5FD" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
   <defs>
-    <linearGradient id="paint0_linear" x1="14" y1="10" x2="55.892" y2="53.078" gradientUnits="userSpaceOnUse">
+    <linearGradient id="phoneGradient" x1="15" y1="9" x2="55" y2="51" gradientUnits="userSpaceOnUse">
       <stop stop-color="#38BDF8"/>
-      <stop offset=".5" stop-color="#3388FF"/>
+      <stop offset=".48" stop-color="#2F7CF6"/>
       <stop offset="1" stop-color="#6D5EF7"/>
-    </linearGradient>
-    <linearGradient id="paint1_linear" x1="31" y1="23" x2="48" y2="47" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#E0F2FE"/>
-      <stop offset="1" stop-color="#A78BFA"/>
     </linearGradient>
   </defs>
 </svg>
