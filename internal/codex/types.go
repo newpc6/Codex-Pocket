@@ -100,6 +100,11 @@ type TurnSteerResponse struct{}
 
 type TurnInterruptResponse struct{}
 
+type ReviewStartResponse struct {
+	Turn           Turn   `json:"turn"`
+	ReviewThreadID string `json:"reviewThreadId"`
+}
+
 type Thread struct {
 	ID               string          `json:"id"`
 	ForkedFromID     *string         `json:"forkedFromId"`

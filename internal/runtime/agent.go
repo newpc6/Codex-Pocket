@@ -153,6 +153,7 @@ func (a *Agent) Dashboard() Dashboard {
 		},
 		Agents:       a.agentOptions(),
 		DefaultAgent: a.defaultAgent(),
+		Options:      defaultSessionOptions(),
 		Stats:        stats,
 		Sessions:     summaries,
 		Approvals:    approvals,
@@ -686,7 +687,7 @@ func hasInProgressTurn(turns []codex.Turn) bool {
 	return false
 }
 
-func (a *Agent) StartSession(ctx context.Context, cwd, prompt, requestedAgentID string) (SessionSummary, error) {
+func (a *Agent) StartSession(ctx context.Context, cwd, prompt, requestedAgentID string, options StartSessionOptions) (SessionSummary, error) {
 	agentID, serviceName, err := a.resolveAgentForStart(requestedAgentID)
 	if err != nil {
 		return SessionSummary{}, err
@@ -703,10 +704,28 @@ func (a *Agent) StartSession(ctx context.Context, cwd, prompt, requestedAgentID 
 	if serviceName != "" {
 		params["serviceName"] = serviceName
 	}
+	if strings.TrimSpace(options.Model) != "" {
+		params["model"] = strings.TrimSpace(options.Model)
+	}
+	if strings.TrimSpace(options.ReasoningEffort) != "" {
+		params["reasoningEffort"] = strings.TrimSpace(options.ReasoningEffort)
+	}
+	if strings.TrimSpace(options.CollaborationMode) != "" {
+		params["collaborationMode"] = strings.TrimSpace(options.CollaborationMode)
+	}
 
 	var threadResp codex.ThreadStartResponse
 	if err := a.client.Call(ctx, "thread/start", params, &threadResp); err != nil {
-		return SessionSummary{}, err
+		if !hasStartSessionOverrides(options) {
+			return SessionSummary{}, err
+		}
+		a.logger.Debug("thread/start with overrides failed, retrying with defaults", "error", err)
+		for _, key := range []string{"model", "reasoningEffort", "collaborationMode"} {
+			delete(params, key)
+		}
+		if err := a.client.Call(ctx, "thread/start", params, &threadResp); err != nil {
+			return SessionSummary{}, err
+		}
 	}
 
 	a.store.UpsertThread(threadResp.Thread)
@@ -724,6 +743,12 @@ func (a *Agent) StartSession(ctx context.Context, cwd, prompt, requestedAgentID 
 	summary := toSessionSummary(record, 0)
 	a.broker.Publish("session.created", summary)
 	return summary, nil
+}
+
+func hasStartSessionOverrides(options StartSessionOptions) bool {
+	return strings.TrimSpace(options.Model) != "" ||
+		strings.TrimSpace(options.ReasoningEffort) != "" ||
+		strings.TrimSpace(options.CollaborationMode) != ""
 }
 
 func (a *Agent) ResumeSession(ctx context.Context, threadID string) (SessionSummary, error) {

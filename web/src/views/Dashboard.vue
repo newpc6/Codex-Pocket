@@ -148,8 +148,8 @@
       </div>
     </div>
 
-    <el-dialog v-model="showNewSession" title="新建会话" width="480px" :close-on-click-modal="false">
-        <el-form :model="newForm" label-width="80px">
+    <el-dialog v-model="showNewSession" title="新建会话" width="520px" class="new-session-dialog" :close-on-click-modal="false">
+      <el-form :model="newForm" label-width="80px">
         <el-form-item label="工作目录">
           <div class="cwd-field">
             <el-input v-model="newForm.cwd" placeholder="D:\project\myapp" />
@@ -164,6 +164,33 @@
             <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" :disabled="!a.available" />
           </el-select>
         </el-form-item>
+        <el-form-item label="模式">
+          <el-segmented v-model="newForm.preset" :options="presetSegmentOptions" @change="applyPreset" />
+        </el-form-item>
+        <el-collapse class="advanced-session-options">
+          <el-collapse-item name="advanced" title="高级选项">
+            <div class="advanced-grid">
+              <label>
+                <span>模型</span>
+                <el-select v-model="newForm.model" placeholder="默认模型">
+                  <el-option v-for="m in sessionOptions.models" :key="m.id || 'default'" :label="m.name" :value="m.id" />
+                </el-select>
+              </label>
+              <label>
+                <span>推理强度</span>
+                <el-select v-model="newForm.reasoningEffort" placeholder="默认">
+                  <el-option v-for="r in sessionOptions.reasoningEfforts" :key="r.id || 'default'" :label="r.name" :value="r.id" />
+                </el-select>
+              </label>
+              <label>
+                <span>协作模式</span>
+                <el-select v-model="newForm.collaborationMode" placeholder="默认协作">
+                  <el-option v-for="m in sessionOptions.collaborationModes" :key="m.id" :label="m.name" :value="m.id" />
+                </el-select>
+              </label>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </el-form>
       <template #footer>
         <el-button @click="showNewSession = false">取消</el-button>
@@ -196,13 +223,26 @@ const app = useAppStore()
 const showNewSession = ref(false)
 const showDirectoryPicker = ref(false)
 const creating = ref(false)
-const newForm = reactive({ cwd: '', prompt: '', agentId: 'codex' })
+const newForm = reactive({
+  cwd: '',
+  prompt: '',
+  agentId: 'codex',
+  preset: 'balanced',
+  model: '',
+  reasoningEffort: 'medium',
+  collaborationMode: 'default',
+})
 const searchQuery = ref('')
 const filterByLifecycle = ref('')
 const sortBy = ref('updatedAt')
 
 const stats = computed(() => app.dashboard.stats)
 const agents = computed(() => app.dashboard.agents || [])
+const sessionOptions = computed(() => app.dashboard.options)
+const presetSegmentOptions = computed(() => sessionOptions.value.presets.map((preset) => ({
+  label: preset.name,
+  value: preset.id,
+})))
 const currentAgentName = computed(() => {
   const a = agents.value.find((a) => a.id === app.selectedAgentId)
   return a?.name || 'Codex'
@@ -316,6 +356,7 @@ function openNewSessionForFolder(cwd: string) {
   newForm.cwd = cwd || ''
   newForm.prompt = ''
   newForm.agentId = app.selectedAgentId || 'codex'
+  applyPreset(newForm.preset)
   showNewSession.value = true
 }
 
@@ -330,7 +371,11 @@ async function handleCreate() {
   }
   creating.value = true
   try {
-    const s = await app.startSession(newForm.cwd, newForm.prompt, newForm.agentId)
+    const s = await app.startSession(newForm.cwd, newForm.prompt, newForm.agentId, {
+      model: newForm.model,
+      reasoningEffort: newForm.reasoningEffort,
+      collaborationMode: newForm.collaborationMode,
+    })
     showNewSession.value = false
     newForm.cwd = ''
     newForm.prompt = ''
@@ -343,8 +388,17 @@ async function handleCreate() {
   }
 }
 
+function applyPreset(value: string | number) {
+  const preset = sessionOptions.value.presets.find((item) => item.id === String(value))
+  if (!preset) return
+  newForm.model = preset.model || ''
+  newForm.reasoningEffort = preset.reasoningEffort || ''
+  newForm.collaborationMode = preset.collaborationMode || 'default'
+}
+
 onMounted(() => {
   app.refreshDashboard()
+  app.loadOptions().catch(() => {})
 })
 
 onUnmounted(() => {
@@ -378,6 +432,46 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   width: 100%;
+}
+
+.new-session-dialog :deep(.el-segmented) {
+  width: 100%;
+}
+
+.new-session-dialog :deep(.el-segmented__item) {
+  min-width: 0;
+  flex: 1;
+}
+
+.advanced-session-options {
+  margin-left: 80px;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.advanced-session-options :deep(.el-collapse-item__header) {
+  height: 34px;
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+}
+
+.advanced-session-options :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.advanced-grid label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--cf-text-secondary);
+  font-size: 13px;
 }
 
 .filter-bar-right {
@@ -625,6 +719,15 @@ onUnmounted(() => {
 
   .cwd-field {
     grid-template-columns: 1fr;
+  }
+
+  .advanced-session-options {
+    margin-left: 0;
+  }
+
+  .advanced-grid label {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .folder-heading {

@@ -77,6 +77,14 @@
 
           <div class="hero-primary-actions">
             <el-button
+              v-if="summary.agentId === 'codex'"
+              size="small"
+              :loading="reviewing"
+              @click="openReviewDialog"
+            >
+              审查改动
+            </el-button>
+            <el-button
               v-if="!summary.loaded && !summary.ended"
               type="primary"
               size="small"
@@ -153,6 +161,10 @@
             <span v-if="!followLiveOutput && latestTurn" class="follow-tip">已停留在历史位置</span>
           </div>
           <div class="toolbar-right">
+            <el-button size="small" text :loading="changesLoading" @click="openChangesDrawer">
+              文件变更
+              <template v-if="changes?.summary.files">({{ changes.summary.files }})</template>
+            </el-button>
             <el-button v-if="!followLiveOutput && latestTurn" size="small" text @click="jumpToLatest">回到最新</el-button>
           </div>
         </div>
@@ -411,6 +423,102 @@
       </div>
     </div>
 
+    <el-drawer
+      v-model="changesDrawerOpen"
+      :direction="isMobile ? 'btt' : 'rtl'"
+      :size="isMobile ? '82%' : '560px'"
+      title="文件变更"
+      class="changes-drawer"
+    >
+      <div class="changes-panel">
+        <div class="change-scope-bar">
+          <el-segmented v-model="changeScope" :options="changeScopeOptions" @change="reloadChanges" />
+          <el-input
+            v-if="changeScope === 'commit'"
+            v-model="changeRef"
+            placeholder="commit hash"
+            clearable
+            @keyup.enter="reloadChanges"
+          />
+          <el-input
+            v-if="changeScope === 'base'"
+            v-model="changeBase"
+            placeholder="base branch，例如 main"
+            clearable
+            @keyup.enter="reloadChanges"
+          />
+          <el-button :icon="Refresh" :loading="changesLoading" circle @click="reloadChanges" />
+        </div>
+
+        <el-alert
+          v-if="changesError"
+          :title="changesError"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+
+        <div v-if="changes" class="changes-summary-row">
+          <span>已编辑 {{ changes.summary.files }} 个文件</span>
+          <span class="diff-add">+{{ changes.summary.additions }}</span>
+          <span class="diff-del">-{{ changes.summary.deletions }}</span>
+          <span v-if="changes.summary.untracked > 0">{{ changes.summary.untracked }} 未跟踪</span>
+        </div>
+
+        <div v-if="changes?.files.length" class="changed-file-list">
+          <button
+            v-for="file in changes.files"
+            :key="file.path"
+            type="button"
+            class="changed-file-row"
+            :class="{ 'is-selected': selectedChangeFile === file.path }"
+            @click="selectChangedFile(file.path)"
+          >
+            <span class="changed-file-status">{{ file.status }}</span>
+            <span class="changed-file-path">{{ file.path }}</span>
+            <span class="changed-file-stats">
+              <span class="diff-add">+{{ file.additions }}</span>
+              <span class="diff-del">-{{ file.deletions }}</span>
+            </span>
+          </button>
+        </div>
+
+        <el-empty v-else-if="!changesLoading && !changesError" description="当前范围没有文件变更" />
+
+        <div v-if="selectedFileDetail" class="file-detail-panel">
+          <div class="file-detail-head">
+            <div class="file-detail-title">{{ selectedFileDetail.path }}</div>
+            <el-radio-group v-model="fileViewMode" size="small">
+              <el-radio-button label="diff">Diff</el-radio-button>
+              <el-radio-button label="content">当前文件</el-radio-button>
+            </el-radio-group>
+          </div>
+          <pre v-if="fileViewMode === 'diff'" class="diff-block file-detail-code">{{ selectedFileDetail.diff || '没有可显示的 diff' }}</pre>
+          <pre v-else-if="selectedFileDetail.readable" class="file-content-block file-detail-code">{{ selectedFileDetail.content }}</pre>
+          <div v-else class="file-readable-error">{{ selectedFileDetail.error || '无法预览这个文件' }}</div>
+          <div v-if="selectedFileDetail.truncated" class="file-truncated-note">文件较大，已截断预览。</div>
+        </div>
+      </div>
+    </el-drawer>
+
+    <el-dialog v-model="reviewDialogOpen" title="审查改动" width="420px" :close-on-click-modal="false">
+      <el-form label-width="82px">
+        <el-form-item label="范围">
+          <el-segmented v-model="reviewScope" :options="changeScopeOptions" />
+        </el-form-item>
+        <el-form-item v-if="reviewScope === 'commit'" label="Commit">
+          <el-input v-model="reviewRef" placeholder="commit hash" />
+        </el-form-item>
+        <el-form-item v-if="reviewScope === 'base'" label="Base">
+          <el-input v-model="reviewBase" placeholder="main / develop / origin/main" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="reviewDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="reviewing" @click="handleStartReview">开始审查</el-button>
+      </template>
+    </el-dialog>
+
     <div v-if="summary && summary.loaded && !summary.ended" class="input-area">
       <div v-if="isStreamingReply" class="streaming-hint">
         <span class="live-dot"></span>
@@ -440,7 +548,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAppStore, type ApprovalRequest, type SessionSummary, type Turn, type TurnItem } from '../stores/app'
+import { useAppStore, type ApprovalRequest, type ChangedFileDetail, type SessionChanges, type SessionSummary, type Turn, type TurnItem } from '../stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, More, ArrowRight, Connection, SwitchButton, Loading } from '@element-plus/icons-vue'
 import VueMarkdown from 'vue-markdown-render'
@@ -457,10 +565,25 @@ const promptText = ref('')
 const submitting = ref(false)
 const resuming = ref(false)
 const detaching = ref(false)
+const reviewing = ref(false)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const followLiveOutput = ref(true)
 const loadingHistory = ref(false)
 const pendingNewMessages = ref(0)
+const changesDrawerOpen = ref(false)
+const changesLoading = ref(false)
+const changesError = ref('')
+const changes = ref<SessionChanges | null>(null)
+const selectedFileDetail = ref<ChangedFileDetail | null>(null)
+const selectedChangeFile = ref('')
+const changeScope = ref('workspace')
+const changeRef = ref('')
+const changeBase = ref('main')
+const fileViewMode = ref<'diff' | 'content'>('diff')
+const reviewDialogOpen = ref(false)
+const reviewScope = ref('workspace')
+const reviewRef = ref('')
+const reviewBase = ref('main')
 const tabInstanceId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let liveSyncTimer: ReturnType<typeof setInterval> | null = null
 let liveSyncBusy = false
@@ -483,6 +606,11 @@ type DiffFileSummary = { path: string; additions: number; deletions: number }
 type DiffSummary = { files: DiffFileSummary[]; additions: number; deletions: number }
 type MessageImage = { url: string; alt: string; index: number }
 const diffSummaryCache = new Map<string, DiffSummary>()
+const changeScopeOptions = [
+  { label: '工作区', value: 'workspace' },
+  { label: 'Commit', value: 'commit' },
+  { label: 'Base', value: 'base' },
+]
 
 const isMobile = ref(window.innerWidth <= 768)
 function onResize() { isMobile.value = window.innerWidth <= 768 }
@@ -858,6 +986,98 @@ watch(orderedTurns, (next, prev) => {
 async function refreshPage() {
   await app.refreshDashboard()
   await app.loadSession(sessionId)
+}
+
+function changeQuery(scope = changeScope.value) {
+  return {
+    scope,
+    ref: scope === 'commit' ? changeRef.value.trim() : '',
+    base: scope === 'base' ? changeBase.value.trim() : '',
+  }
+}
+
+async function openChangesDrawer() {
+  changesDrawerOpen.value = true
+  await reloadChanges()
+}
+
+async function reloadChanges() {
+  changesLoading.value = true
+  changesError.value = ''
+  selectedFileDetail.value = null
+  selectedChangeFile.value = ''
+  try {
+    const data = await app.loadSessionChanges(sessionId, changeQuery())
+    changes.value = data
+    const firstFile = data.files?.[0]
+    if (firstFile) {
+      await selectChangedFile(firstFile.path)
+    }
+  } catch (e: any) {
+    changes.value = null
+    changesError.value = e.response?.data?.error || '读取变更失败'
+  } finally {
+    changesLoading.value = false
+  }
+}
+
+async function selectChangedFile(path: string) {
+  if (!path) return
+  selectedChangeFile.value = path
+  fileViewMode.value = 'diff'
+  try {
+    const data = await app.loadSessionChanges(sessionId, { ...changeQuery(), file: path })
+    selectedFileDetail.value = data.file || null
+  } catch (e: any) {
+    selectedFileDetail.value = null
+    ElMessage.error(e.response?.data?.error || '读取文件失败')
+  }
+}
+
+function openReviewDialog() {
+  reviewScope.value = changeScope.value
+  reviewRef.value = changeRef.value
+  reviewBase.value = changeBase.value
+  reviewDialogOpen.value = true
+}
+
+async function handleStartReview() {
+  if (reviewScope.value === 'commit' && !reviewRef.value.trim()) {
+    ElMessage.warning('请填写 commit hash')
+    return
+  }
+  if (reviewScope.value === 'base' && !reviewBase.value.trim()) {
+    ElMessage.warning('请填写 base branch')
+    return
+  }
+  if (!summary.value?.loaded) {
+    try {
+      await ElMessageBox.confirm('Review 会作为新的 Codex turn 发送，需要先接管这个会话。', '接管后审查', {
+        confirmButtonText: '接管并继续',
+        cancelButtonText: '取消',
+        type: 'info',
+      })
+      await app.resumeSession(sessionId)
+    } catch {
+      return
+    }
+  }
+
+  reviewing.value = true
+  try {
+    await app.startReview(sessionId, {
+      scope: reviewScope.value,
+      ref: reviewScope.value === 'commit' ? reviewRef.value.trim() : '',
+      base: reviewScope.value === 'base' ? reviewBase.value.trim() : '',
+    })
+    reviewDialogOpen.value = false
+    followLiveOutput.value = true
+    ElMessage.success('已开始审查改动')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '审查启动失败')
+  } finally {
+    reviewing.value = false
+  }
 }
 
 async function refreshSessionWhenVisible() {
@@ -2066,6 +2286,155 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 
+.changes-drawer :deep(.el-drawer__body) {
+  padding: 0;
+  min-height: 0;
+}
+
+.changes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 0 16px 16px;
+}
+
+.change-scope-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.change-scope-bar :deep(.el-input) {
+  grid-column: 1 / -1;
+}
+
+.changes-summary-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: 10px;
+  background: #f8fbff;
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.changed-file-list {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: 10px;
+}
+
+.changed-file-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(216, 230, 251, 0.75);
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.changed-file-row:last-child {
+  border-bottom: 0;
+}
+
+.changed-file-row.is-selected {
+  background: #eef6ff;
+}
+
+.changed-file-status {
+  color: var(--cf-primary-dark);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.changed-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cf-text-heavy);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.changed-file-stats {
+  display: inline-flex;
+  gap: 7px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-detail-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.file-detail-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cf-text-heavy);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.file-detail-code {
+  flex: 1;
+  min-height: 180px;
+  max-height: none;
+  overflow: auto;
+}
+
+.file-content-block {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.file-readable-error,
+.file-truncated-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff8eb;
+  color: #92400e;
+  font-size: 13px;
+}
+
 .tool-details {
   border-top: 1px solid rgba(216, 230, 251, 0.9);
   padding-top: 10px;
@@ -2226,6 +2595,7 @@ onUnmounted(() => {
 
 .session-detail-page.is-mobile .hero-primary-actions {
   justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .session-detail-page.is-mobile .hero-name {
@@ -2287,5 +2657,26 @@ onUnmounted(() => {
   margin-top: 6px;
   width: 100%;
   justify-content: flex-end;
+}
+
+.session-detail-page.is-mobile .changes-panel {
+  padding: 0 12px 12px;
+}
+
+.session-detail-page.is-mobile .change-scope-bar {
+  grid-template-columns: 1fr auto;
+}
+
+.session-detail-page.is-mobile .changed-file-list {
+  max-height: 30vh;
+}
+
+.session-detail-page.is-mobile .file-detail-head {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.session-detail-page.is-mobile .file-detail-code {
+  min-height: 240px;
 }
 </style>

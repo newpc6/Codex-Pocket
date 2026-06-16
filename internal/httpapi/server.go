@@ -54,6 +54,7 @@ func (s *Server) routes() {
 
 	// API routes (auth required, applied via middleware)
 	s.mux.HandleFunc("/api/v1/dashboard", s.handleDashboard)
+	s.mux.HandleFunc("/api/v1/options", s.handleOptions)
 	s.mux.HandleFunc("/api/v1/events", s.handleEvents)
 	s.mux.HandleFunc("/api/v1/directories", s.handleDirectories)
 	s.mux.HandleFunc("/api/v1/sessions", s.handleSessions)
@@ -191,6 +192,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.agent.Dashboard())
 }
 
+func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	writeJSON(w, http.StatusOK, s.agent.Options(ctx))
+}
+
 func (s *Server) handleDirectories(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w)
@@ -214,10 +225,13 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		})
 	case http.MethodPost:
 		var request struct {
-			Action string `json:"action"`
-			CWD    string `json:"cwd"`
-			Prompt string `json:"prompt"`
-			Agent  string `json:"agent"`
+			Action            string `json:"action"`
+			CWD               string `json:"cwd"`
+			Prompt            string `json:"prompt"`
+			Agent             string `json:"agent"`
+			Model             string `json:"model"`
+			ReasoningEffort   string `json:"reasoningEffort"`
+			CollaborationMode string `json:"collaborationMode"`
 		}
 		if !decodeJSON(w, r, &request) {
 			return
@@ -249,7 +263,11 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				writeErrorMessage(w, http.StatusBadRequest, "first prompt is required to materialize a managed session")
 				return
 			}
-			session, err := s.agent.StartSession(ctx, cwd, prompt, request.Agent)
+			session, err := s.agent.StartSession(ctx, cwd, prompt, request.Agent, runtime.StartSessionOptions{
+				Model:             request.Model,
+				ReasoningEffort:   request.ReasoningEffort,
+				CollaborationMode: request.CollaborationMode,
+			})
 			if err != nil {
 				writeError(w, http.StatusBadGateway, err)
 				return
@@ -464,6 +482,43 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "changes":
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		changes, err := s.agent.SessionChanges(
+			ctx,
+			sessionID,
+			runtime.ChangeScope(strings.TrimSpace(r.URL.Query().Get("scope"))),
+			r.URL.Query().Get("ref"),
+			r.URL.Query().Get("base"),
+			r.URL.Query().Get("file"),
+		)
+		if err != nil {
+			writeErrorMessage(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, changes)
+	case "review":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var request runtime.ReviewStartRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		turn, err := s.agent.StartReview(ctx, sessionID, request)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, turn)
 	case "turns/start":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w)

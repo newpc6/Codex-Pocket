@@ -13,6 +13,7 @@ type Dashboard struct {
 	Agent        AgentSnapshot        `json:"agent"`
 	Agents       []AgentOption        `json:"agents"`
 	DefaultAgent string               `json:"defaultAgent"`
+	Options      SessionOptions       `json:"options"`
 	Stats        DashboardStats       `json:"stats"`
 	Sessions     []SessionSummary     `json:"sessions"`
 	Approvals    []PendingRequestView `json:"approvals"`
@@ -32,6 +33,48 @@ type AgentCapabilities struct {
 	SupportsArchive       bool `json:"supportsArchive"`
 	SupportsResume        bool `json:"supportsResume"`
 	SupportsHistoryImport bool `json:"supportsHistoryImport"`
+}
+
+type SessionOptions struct {
+	Models             []ModelOption             `json:"models"`
+	ReasoningEfforts   []ReasoningEffortOption   `json:"reasoningEfforts"`
+	CollaborationModes []CollaborationModeOption `json:"collaborationModes"`
+	Presets            []SessionPreset           `json:"presets"`
+}
+
+type StartSessionOptions struct {
+	Model             string `json:"model"`
+	ReasoningEffort   string `json:"reasoningEffort"`
+	CollaborationMode string `json:"collaborationMode"`
+}
+
+type ModelOption struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
+}
+
+type ReasoningEffortOption struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Default bool   `json:"default"`
+}
+
+type CollaborationModeOption struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
+}
+
+type SessionPreset struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	Model             string `json:"model"`
+	ReasoningEffort   string `json:"reasoningEffort"`
+	CollaborationMode string `json:"collaborationMode"`
 }
 
 type DashboardStats struct {
@@ -145,4 +188,56 @@ type DirectoryBrowseResult struct {
 	HomePath    string           `json:"homePath"`
 	Roots       []DirectoryEntry `json:"roots"`
 	Entries     []DirectoryEntry `json:"entries"`
+}
+
+type ChangeScope string
+
+const (
+	ChangeScopeWorkspace ChangeScope = "workspace"
+	ChangeScopeCommit    ChangeScope = "commit"
+	ChangeScopeBase      ChangeScope = "base"
+)
+
+type SessionChanges struct {
+	Scope     ChangeScope        `json:"scope"`
+	Ref       string             `json:"ref"`
+	Base      string             `json:"base"`
+	CWD       string             `json:"cwd"`
+	Summary   ChangeSummary      `json:"summary"`
+	Files     []ChangedFile      `json:"files"`
+	Diff      string             `json:"diff"`
+	File      *ChangedFileDetail `json:"file,omitempty"`
+	Generated int64              `json:"generated"`
+}
+
+type ChangeSummary struct {
+	Files     int `json:"files"`
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
+	Untracked int `json:"untracked"`
+}
+
+type ChangedFile struct {
+	Path      string `json:"path"`
+	OldPath   string `json:"oldPath,omitempty"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Binary    bool   `json:"binary"`
+	Untracked bool   `json:"untracked"`
+}
+
+type ChangedFileDetail struct {
+	ChangedFile
+	Diff      string `json:"diff"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated"`
+	Readable  bool   `json:"readable"`
+	Error     string `json:"error,omitempty"`
+}
+
+type ReviewStartRequest struct {
+	Scope ChangeScope `json:"scope"`
+	Ref   string      `json:"ref"`
+	Base  string      `json:"base"`
 }

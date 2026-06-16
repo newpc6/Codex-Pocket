@@ -10,6 +10,26 @@ export interface AgentInfo {
   default: boolean
 }
 
+export interface SessionOptionItem {
+  id: string
+  name: string
+  description?: string
+  default?: boolean
+}
+
+export interface SessionPreset extends SessionOptionItem {
+  model: string
+  reasoningEffort: string
+  collaborationMode: string
+}
+
+export interface SessionOptions {
+  models: SessionOptionItem[]
+  reasoningEfforts: SessionOptionItem[]
+  collaborationModes: SessionOptionItem[]
+  presets: SessionPreset[]
+}
+
 export interface SessionSummary {
   id: string
   agentId: string
@@ -81,6 +101,41 @@ export interface SessionDetail {
   hasMoreHistory: boolean
 }
 
+export interface ChangedFile {
+  path: string
+  oldPath?: string
+  status: string
+  additions: number
+  deletions: number
+  binary: boolean
+  untracked: boolean
+}
+
+export interface ChangedFileDetail extends ChangedFile {
+  diff: string
+  content: string
+  truncated: boolean
+  readable: boolean
+  error?: string
+}
+
+export interface SessionChanges {
+  scope: string
+  ref: string
+  base: string
+  cwd: string
+  summary: {
+    files: number
+    additions: number
+    deletions: number
+    untracked: number
+  }
+  files: ChangedFile[]
+  diff: string
+  file?: ChangedFileDetail
+  generated: number
+}
+
 export interface DashboardData {
   agent: {
     connected: boolean
@@ -90,6 +145,7 @@ export interface DashboardData {
   }
   agents: AgentInfo[]
   defaultAgent: string
+  options: SessionOptions
   stats: {
     totalSessions: number
     loadedSessions: number
@@ -129,11 +185,49 @@ function parseNotificationThreadId(event: SSEEvent): string {
   return typeof params.threadId === 'string' ? params.threadId : ''
 }
 
+function defaultSessionOptions(): SessionOptions {
+  return {
+    models: [
+      { id: '', name: 'Codex 默认', description: '沿用当前 Codex 配置', default: true },
+      { id: 'gpt-5-codex', name: 'GPT-5 Codex', description: '适合认真改代码和审查' },
+      { id: 'gpt-5-mini', name: 'GPT-5 Mini', description: '适合快速任务' },
+    ],
+    reasoningEfforts: [
+      { id: '', name: '默认', default: true },
+      { id: 'minimal', name: '快一点' },
+      { id: 'medium', name: '认真改' },
+      { id: 'high', name: '深度审查' },
+    ],
+    collaborationModes: [
+      { id: 'default', name: '默认协作', description: '可以分析、修改并验证', default: true },
+      { id: 'plan', name: '只分析不改', description: '先给计划和建议' },
+      { id: 'review', name: '代码审查', description: '优先找风险和测试缺口' },
+    ],
+    presets: [
+      { id: 'balanced', name: '认真改', description: '适合日常开发', model: '', reasoningEffort: 'medium', collaborationMode: 'default' },
+      { id: 'fast', name: '快一点', description: '轻量修改和问答', model: '', reasoningEffort: 'minimal', collaborationMode: 'default' },
+      { id: 'review', name: '代码审查', description: '只看风险和回归', model: '', reasoningEffort: 'high', collaborationMode: 'review' },
+      { id: 'analysis', name: '只分析不改', description: '先讨论方案', model: '', reasoningEffort: 'medium', collaborationMode: 'plan' },
+    ],
+  }
+}
+
+function normalizeSessionOptions(input?: SessionOptions): SessionOptions {
+  const fallback = defaultSessionOptions()
+  return {
+    models: input?.models?.length ? input.models : fallback.models,
+    reasoningEfforts: input?.reasoningEfforts?.length ? input.reasoningEfforts : fallback.reasoningEfforts,
+    collaborationModes: input?.collaborationModes?.length ? input.collaborationModes : fallback.collaborationModes,
+    presets: input?.presets?.length ? input.presets : fallback.presets,
+  }
+}
+
 export const useAppStore = defineStore('app', () => {
   const dashboard = ref<DashboardData>({
     agent: { connected: false, startedAt: '', listenAddr: '', codexBinaryPath: '' },
     agents: [],
     defaultAgent: 'codex',
+    options: defaultSessionOptions(),
     stats: { totalSessions: 0, loadedSessions: 0, activeSessions: 0, pendingApprovals: 0 },
     sessions: [],
     approvals: [],
@@ -192,7 +286,7 @@ export const useAppStore = defineStore('app', () => {
     error.value = ''
     dashboardRefreshInFlight = (async () => {
       const res = await api.get<DashboardData>('/dashboard')
-      dashboard.value = res.data
+      dashboard.value = { ...res.data, options: normalizeSessionOptions(res.data.options) }
       syncSelectedAgent(res.data)
       lastDashboardRefreshAt = Date.now()
     })()
@@ -492,8 +586,41 @@ export const useAppStore = defineStore('app', () => {
     await refreshDashboard()
   }
 
-  async function startSession(cwd: string, prompt: string, agentId: string) {
-    const res = await api.post('/sessions', { action: 'start', cwd, prompt, agent: agentId })
+  async function loadOptions() {
+    const res = await api.get<SessionOptions>('/options')
+    dashboard.value.options = normalizeSessionOptions(res.data)
+    return dashboard.value.options
+  }
+
+  async function loadSessionChanges(sessionId: string, params?: { scope?: string; ref?: string; base?: string; file?: string }) {
+    const res = await api.get<SessionChanges>(`/sessions/${sessionId}/changes`, { params })
+    return res.data
+  }
+
+  async function startReview(sessionId: string, params?: { scope?: string; ref?: string; base?: string }) {
+    const res = await api.post<Turn>(`/sessions/${sessionId}/review`, params || {})
+    if (res.data?.id) {
+      appendLocalUserInput(sessionId, res.data.id, [{ type: 'text', text: '审查改动' }])
+    }
+    await refreshDashboard()
+    await loadSession(sessionId)
+    return res.data
+  }
+
+  async function startSession(cwd: string, prompt: string, agentId: string, options?: {
+    model?: string
+    reasoningEffort?: string
+    collaborationMode?: string
+  }) {
+    const res = await api.post('/sessions', {
+      action: 'start',
+      cwd,
+      prompt,
+      agent: agentId,
+      model: options?.model || '',
+      reasoningEffort: options?.reasoningEffort || '',
+      collaborationMode: options?.collaborationMode || '',
+    })
     await refreshDashboard()
     await loadSession(res.data.id)
     return res.data
@@ -665,6 +792,7 @@ export const useAppStore = defineStore('app', () => {
     renameSession, forkSession, compactSession, rollbackSession,
     setSessionGoal, clearSessionGoal,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
+    loadOptions, loadSessionChanges, startReview,
     replaceSessionDetail,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }
