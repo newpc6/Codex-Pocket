@@ -625,7 +625,7 @@ func (a *Agent) mergeCodexHistoryThread(thread *codex.Thread) error {
 	if updatedAt > thread.UpdatedAt {
 		thread.UpdatedAt = updatedAt
 	}
-	if strings.TrimSpace(thread.Status.Type) == "" || managedNow {
+	if strings.TrimSpace(thread.Status.Type) == "" {
 		hasRunning := hasInProgressTurn(thread.Turns)
 		if managedNow && hasRunning {
 			thread.Status.Type = "active"

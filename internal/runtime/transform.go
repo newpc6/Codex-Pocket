@@ -30,7 +30,7 @@ func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionS
 	if record.Runtime.Ended {
 		effectiveStatus = "idle"
 	}
-	if effectiveStatus == "active" && len(record.Thread.Turns) > 0 && !recordHasInProgressTurn(record) && len(record.Thread.Status.ActiveFlags) == 0 {
+	if effectiveStatus == "active" && !effectiveLoaded && len(record.Thread.Turns) > 0 && !recordHasInProgressTurn(record) && len(record.Thread.Status.ActiveFlags) == 0 {
 		effectiveStatus = "idle"
 	}
 	historyAvailable := sessionHistoryAvailable(record)

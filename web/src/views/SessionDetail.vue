@@ -1910,7 +1910,7 @@ async function syncLiveTranscript() {
   if (!tryClaimLiveLease()) return
   liveSyncBusy = true
   try {
-    await app.loadSession(sessionId, { fast: true })
+    await app.loadSession(sessionId)
     await refreshLiveChanges()
     publishLiveSnapshot()
   } finally {

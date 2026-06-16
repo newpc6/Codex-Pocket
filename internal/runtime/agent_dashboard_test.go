@@ -123,6 +123,36 @@ func TestSessionSummaryForcesIdleWhenNoTurnIsRunning(t *testing.T) {
 	}
 }
 
+func TestLoadedActiveSessionSummaryStaysActiveWhileRuntimeIsProcessing(t *testing.T) {
+	sessionStore, err := store.New(nil)
+	if err != nil {
+		t.Fatalf("create session store: %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID:            "loaded-active-thread",
+		ModelProvider: "OpenAI",
+		CreatedAt:     100,
+		UpdatedAt:     200,
+		Status:        codex.ThreadStatus{Type: "active"},
+		CWD:           "/tmp/active",
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "completed"},
+		},
+	})
+	sessionStore.SetSessionLoaded("loaded-active-thread", true)
+	sessionStore.SetSessionManaged("loaded-active-thread", true)
+
+	record, ok := sessionStore.SnapshotSession("loaded-active-thread")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing record")
+	}
+	summary := toSessionSummary(record, 0)
+	if got := summary.Status; got != "active" {
+		t.Fatalf("summary.Status = %q, want active", got)
+	}
+}
+
 func TestSessionSummaryIncludesRuntimeAttachMode(t *testing.T) {
 	sessionStore, err := store.New(nil)
 	if err != nil {
