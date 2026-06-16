@@ -690,6 +690,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	subscription := s.agent.Subscribe()
 	defer s.agent.Unsubscribe(subscription)
 
+	_, _ = fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 

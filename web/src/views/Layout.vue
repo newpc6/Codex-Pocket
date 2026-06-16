@@ -195,8 +195,8 @@ function onRefresh() {
 
 // SSE: connect on mount, listen for approval notifications
 onMounted(async () => {
-  await app.refreshDashboard()
   app.connectSSE()
+  void app.refreshDashboard()
 
   // Listen for new approval requests and show notification
   sseService.on('approval.created', (event) => {
