@@ -1,55 +1,51 @@
 # CodexPocket
 
-CodexPocket 是一个运行在 Codex 所在电脑上的 Web 控制台。它把本机 Codex / Claude 会话整理成浏览器和手机都能使用的控制界面，让你可以远程查看实时消息、接管会话、继续下指令、处理中断和审批。
+CodexPocket 是一个运行在 Codex 所在电脑上的 Web 会话控制台。它把本机 Codex 会话整理成适合桌面和手机浏览器使用的界面，让你可以远程查看会话、接管任务、继续发送指令、处理中断、审查代码改动和查看过程细节。
 
-它不是一个简单的终端转发页面，而是围绕 Codex app-server 的会话、turn、工具调用、文件变更、图片、审批和状态流做了一层可视化控制平面。
+它不是简单的终端转发页面，而是围绕 Codex app-server 的会话、turn、工具调用、文件变更、图片、审批和状态流做的一层可视化控制平面。
 
 ## 界面预览
 
-### 会话总览
-
-![会话总览](assets/screenshots/01-dashboard.jpg)
-
-### 会话详情
-
-![会话详情](assets/screenshots/02-session-detail.jpg)
-
-### 工作目录选择
-
-![工作目录选择](assets/screenshots/03-directory-picker.jpg)
-
-### 审批中心
-
-![审批中心](assets/screenshots/04-approvals.jpg)
-
-### 移动端体验
+### 登录与新建会话
 
 <p>
-  <img src="assets/screenshots/05-mobile-session.jpg" alt="移动端会话详情" width="220">
-  <img src="assets/screenshots/06-mobile-dashboard.jpg" alt="移动端会话总览" width="220">
-  <img src="assets/screenshots/07-mobile-session-header.jpg" alt="移动端会话头" width="220">
+  <img src="assets/screenshots/18-登录页面.jpg" alt="登录页面" width="260">
+  <img src="assets/screenshots/19-新建会话.jpg" alt="新建会话" width="260">
 </p>
 
+### 手机端会话首页与项目目录
+
 <p>
-  <img src="assets/screenshots/08-mobile-message-stream.jpg" alt="移动端消息流" width="220">
-  <img src="assets/screenshots/09-mobile-directory-picker.jpg" alt="移动端目录选择" width="220">
-  <img src="assets/screenshots/10-mobile-approvals.jpg" alt="移动端审批中心" width="220">
+  <img src="assets/screenshots/11-mobile-会话首页.jpg" alt="手机端会话首页" width="220">
+  <img src="assets/screenshots/12-mobile-项目目录.jpg" alt="手机端项目目录" width="220">
+</p>
+
+### 会话详情与实时处理
+
+<p>
+  <img src="assets/screenshots/13-mobile-会话内容.jpg" alt="手机端会话内容" width="220">
+  <img src="assets/screenshots/14-mobile-会话内容-处理中.jpg" alt="手机端会话处理中" width="220">
+  <img src="assets/screenshots/16--mobile-会话内容-过程详情.jpg" alt="手机端过程详情" width="220">
+</p>
+
+### 代码改动与会话结束
+
+<p>
+  <img src="assets/screenshots/15--mobile-会话内容-代码改动.jpg" alt="手机端代码改动" width="220">
+  <img src="assets/screenshots/17--mobile-会话内容-会话结束.jpg" alt="手机端会话结束" width="220">
 </p>
 
 ## 核心特性
 
-- **会话管理**：自动发现本机 Codex 历史会话，按工作目录分组展示，支持搜索、状态筛选和生命周期筛选。
-- **移动端可用**：Web Console 做了响应式布局，可以在手机浏览器里查看会话、发送指令、接管、取消接管和中断任务。
-- **远程接管**：对未接管会话可以一键接管；接管后 CodexPocket 可以继续发送消息、追加 steer、interrupt 当前 turn，并可取消接管回到发现状态。
-- **实时消息**：通过 SSE 和轻量本地 transcript 同步追踪正在运行的会话，尽量贴近 Codex 客户端里的实时输出节奏。
-- **Markdown 渲染**：用户消息和助手消息使用 Markdown 展示，代码、列表、链接、行内代码等内容保持可读。
-- **图片展示**：用户输入和助手输出里的图片会以横向缩略图展示，点击可放大预览，适合手机端查看截图上下文。
-- **工具调用展示**：工具消息默认折叠，`shell_command` 会直接展示命令 tag，展开后可查看原始 JSON 和输出。
-- **过程折叠**：会话中的中间步骤、连续命令、正在思考、上下文压缩等过程信息会合并成轻量状态，避免刷屏。
-- **文件变更**：会话结束后展示本轮修改过的文件、增删行统计和变更摘要，方便快速进入审核。
-- **审批中心**：集中处理命令、文件变更、权限和用户输入类审批请求。
-- **工作目录选择器**：新建会话时可以直接浏览 Codex 所在电脑上的目录，不需要手动输入路径。
-- **多标签页协作**：多个浏览器标签同时打开时，会通过前端 lease 和广播机制降低重复轮询，减少后端压力。
+- **手机优先的会话控制**：会话列表、项目分组、会话详情、输入框、过程折叠和文件变更都针对手机浏览器做了紧凑布局。
+- **会话发现与接管**：自动发现本机 Codex 历史会话，按工作目录分组；未接管会话可一键接管，接管后继续发送指令。
+- **实时 turn 状态**：通过 SSE 和本地 transcript 同步展示 Codex 正在思考、正在运行命令、正在编辑文件和最终总结。
+- **过程折叠**：默认突出用户消息与 Codex 最终回复，中间命令、工具调用、编辑过程折叠到“已处理”区域，展开后按时间顺序查看。
+- **代码改动面板**：每轮会话展示改动过的代码文件、增删行统计；可查看本轮 diff、单文件 diff，并支持审查与撤销工作区改动。
+- **Review 模式**：支持审查当前工作区、指定 commit、base branch 或某轮会话改动，让手机端不用翻完整 diff 也能快速看风险。
+- **目录选择器**：新建会话时可以浏览 Agent 所在电脑上的项目目录，手机上也能进入目录并选择当前目录。
+- **图片输入与预览**：支持上传图片作为输入附件，会话中的图片会以缩略图展示并可放大查看。
+- **命令与审批**：运行命令、审批请求、权限提示统一进入会话流和审批中心，适合远程处理卡住的任务。
 - **多 Agent 接入**：当前支持 Codex app-server，并保留 Claude Code 会话发现和运行时接入能力。
 
 ## 架构
@@ -61,18 +57,18 @@ Codex CLI / codex app-server
         v
 Go Agent
   - 启动并持有本机 codex app-server
-  - 发现和接管会话
+  - 发现、接管、恢复和结束会话
   - 同步 turn、工具、diff、审批和目标状态
   - 暴露 HTTP API、SSE 和静态 Web 资源
         |
         | HTTP / SSE
         v
 Web Console
-  - 会话总览
+  - 会话首页
   - 会话详情
-  - 实时消息
-  - 审批中心
-  - 设置和移动端控制
+  - 实时消息与过程折叠
+  - 文件变更与 Review
+  - 审批中心和设置页
 ```
 
 ## 快速开始
@@ -153,18 +149,20 @@ npm run build
 
 ## 基本使用
 
-1. 启动后端 Agent，并确认 Codex CLI 已经登录。
+1. 启动后端 Agent，并确认 Codex CLI 已登录。
 2. 启动 Web Console，打开 `http://localhost:7319`。
 3. 使用配置中的账号登录，默认开发账号为 `admin / admin123`。
-4. 在"会话"页面查看按工作目录分组的会话列表。
-5. 点击某个会话进入详情页，查看历史消息、图片、工具调用和文件变更。
-6. 对未接管会话点击"接管会话"，接管后即可继续发送指令。
-7. 会话运行中可以追加指令、查看实时输出、处理中断或审批请求。
+4. 在会话首页按项目目录查看会话，也可以选择工作目录新建会话。
+5. 进入会话详情页，查看用户消息、Codex 回复、过程详情、命令和文件变更。
+6. 未接管会话可点击“接管会话”，之后可以继续发送指令、追加 steer 或中断当前 turn。
+7. 会话结束后可查看本轮改动文件、打开 diff、发起审查或撤销工作区改动。
 
 ## 主要页面
 
-- **会话总览**：统计总会话、已接管、运行中、待审批，并按工作目录展示会话。
-- **会话详情**：展示当前会话头、接管状态、turn 时间线、实时消息、工具调用、图片和文件变更。
+- **会话首页**：按项目目录分组展示会话，支持查看运行中、历史、未接管等状态。
+- **新建会话**：选择工作目录，填写初始提示词，选择模型、推理强度和协作模式。
+- **会话详情**：展示会话头、接管状态、turn 时间线、实时消息、工具调用、图片和文件变更。
+- **文件变更**：查看工作区、commit、base branch 或指定 turn 的代码改动。
 - **审批中心**：集中处理 Codex/Claude 请求的命令、文件、权限和用户输入审批。
 - **设置页**：查看 Agent 状态、监听地址、Codex 路径、运行时能力和登录信息。
 
@@ -176,6 +174,7 @@ npm run build
 GET    /healthz
 POST   /api/v1/auth/login
 GET    /api/v1/dashboard
+GET    /api/v1/options
 GET    /api/v1/directories
 GET    /api/v1/sessions
 POST   /api/v1/sessions
@@ -188,6 +187,9 @@ POST   /api/v1/sessions/:id/rename
 POST   /api/v1/sessions/:id/fork
 POST   /api/v1/sessions/:id/compact
 POST   /api/v1/sessions/:id/rollback
+GET    /api/v1/sessions/:id/changes
+POST   /api/v1/sessions/:id/changes/revert
+POST   /api/v1/sessions/:id/review
 GET    /api/v1/sessions/:id/goal
 POST   /api/v1/sessions/:id/goal
 DELETE /api/v1/sessions/:id/goal
@@ -208,6 +210,7 @@ CodexPocket 可以控制运行 Agent 的电脑执行 Codex 操作，请按本机
 - 不要把默认账号密码暴露到公网。
 - 部署到局域网或远程访问时，请修改 `CODEXPOCKET_JWT_SECRET` 和登录账号。
 - 建议配合反向代理、HTTPS、访问控制或 VPN 使用。
+- 对命令执行、文件撤销、审批处理等高权限操作保持谨慎。
 
 ## 开发验证
 
@@ -230,6 +233,7 @@ internal/runtime       会话、turn、审批、状态和多 Agent 编排
 internal/httpapi       HTTP API、SSE、认证和资源访问
 internal/store         本地状态存储
 web                    Vue 3 Web Console
+assets/screenshots     README 截图资源
 docs                   架构、生命周期和路线文档
 scripts                辅助脚本
 ```
