@@ -195,141 +195,6 @@
                 <span>{{ liveActivityText(turn) }}</span>
               </div>
 
-              <details
-                v-if="turnProcessSummaryItems(turn).length > 0"
-                class="turn-process is-compact"
-                :open="turn.status === 'inProgress'"
-              >
-                <summary class="turn-process-summary">
-                  <span class="turn-process-title">
-                    <span v-if="turn.status === 'inProgress'" class="activity-spinner is-small"></span>
-                    <span>{{ turnProcessedSummary(turn) }}</span>
-                  </span>
-                  <span v-if="turnProcessedDuration(turn)" class="turn-process-duration">{{ turnProcessedDuration(turn) }}</span>
-                </summary>
-
-                <div class="turn-process-items">
-                  <template
-                    v-for="block in turnTimelineBlocks(turn)"
-                    :key="`${turn.id}-timeline-${block.startIndex}-${block.kind}`"
-                  >
-                    <div v-if="block.kind === 'commands'" class="process-command-group">
-                      <details>
-                        <summary class="process-command-summary">
-                          <span>已运行 {{ block.entries.length }} 条命令</span>
-                          <span v-if="blockDuration(block)">{{ blockDuration(block) }}</span>
-                        </summary>
-                        <div class="process-command-list">
-                          <div
-                            v-for="entry in block.entries"
-                            :key="entry.item.id || `${turn.id}-cmd-${entry.index}`"
-                            class="process-entry-card"
-                          >
-                            <div class="process-entry-head">
-                              <span>{{ toolDisplayName(entry.item) }}</span>
-                              <span v-if="toolCommandTag(entry.item)" class="tool-command-tag" :title="toolCommandTag(entry.item)">
-                                {{ toolCommandTag(entry.item) }}
-                              </span>
-                            </div>
-                            <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
-                              <summary>输出</summary>
-                              <div v-if="entry.item.body" class="message-body is-code">
-                                <pre>{{ entry.item.body }}</pre>
-                              </div>
-                              <div v-if="entry.item.auxiliary" class="message-aux tool-output">
-                                <pre>{{ entry.item.auxiliary }}</pre>
-                              </div>
-                            </details>
-                          </div>
-                        </div>
-                      </details>
-                    </div>
-
-                    <div
-                      v-else
-                      v-for="entry in block.entries"
-                      :key="entry.item.id || `${turn.id}-timeline-${entry.index}`"
-                      class="process-entry-card"
-                      :class="`is-${entry.item.type}`"
-                    >
-                      <div class="process-entry-head">
-                        <span>{{ processEntryTitle(entry.item) }}</span>
-                        <span v-if="entry.item.status">{{ entry.item.status }}</span>
-                      </div>
-                      <template v-if="entry.item.type === 'agentMessage' || entry.item.type === 'userMessage'">
-                        <div v-if="itemImages(entry.item).length" class="image-strip">
-                          <el-image
-                            v-for="image in itemImages(entry.item)"
-                            :key="image.url"
-                            class="message-thumb"
-                            :src="image.url"
-                            :preview-src-list="itemPreviewUrls(entry.item)"
-                            :initial-index="image.index"
-                            fit="cover"
-                            preview-teleported
-                          />
-                        </div>
-                        <div v-if="itemText(entry.item)" class="markdown-body">
-                          <VueMarkdown :source="renderMarkdown(itemText(entry.item))" :options="markdownOptions" />
-                        </div>
-                      </template>
-                      <template v-else-if="isStructuredToolItem(entry.item)">
-                        <div class="tool-headline">
-                          <span class="tool-type">{{ toolDisplayName(entry.item) }}</span>
-                          <span v-if="toolCommandTag(entry.item)" class="tool-command-tag" :title="toolCommandTag(entry.item)">
-                            {{ toolCommandTag(entry.item) }}
-                          </span>
-                        </div>
-                        <details v-if="hasStructuredToolDetails(entry.item)" class="tool-details">
-                          <summary>查看原始内容</summary>
-                          <div v-if="entry.item.body" class="message-body is-code">
-                            <pre>{{ entry.item.body }}</pre>
-                          </div>
-                          <div v-if="entry.item.auxiliary" class="message-aux tool-output">
-                            <pre>{{ entry.item.auxiliary }}</pre>
-                          </div>
-                        </details>
-                      </template>
-                      <template v-else>
-                        <div v-if="entry.item.body" class="message-body" :class="{ 'is-code': isCodeType(entry.item.type) }">
-                          <pre v-if="isCodeType(entry.item.type)">{{ entry.item.body }}</pre>
-                          <div v-else class="markdown-body">
-                            <VueMarkdown :source="renderMarkdown(itemText(entry.item) || entry.item.body)" :options="markdownOptions" />
-                          </div>
-                        </div>
-                        <details v-if="entry.item.auxiliary" class="message-aux">
-                          <summary>详细输出</summary>
-                          <pre>{{ entry.item.auxiliary }}</pre>
-                        </details>
-                      </template>
-                    </div>
-
-                    <div v-if="block.kind === 'diff'" class="process-entry-card is-fileChange">
-                      <div class="process-entry-head">
-                        <span>文件变更</span>
-                        <span>
-                          <span class="diff-add">+{{ diffSummary(turn.diff).additions }}</span>
-                          <span class="diff-del"> -{{ diffSummary(turn.diff).deletions }}</span>
-                        </span>
-                      </div>
-                      <details class="tool-details">
-                        <summary>查看 diff</summary>
-                        <div class="file-change-list">
-                          <div v-for="file in diffSummary(turn.diff).files" :key="file.path" class="file-change-row">
-                            <span class="file-change-path">{{ file.path }}</span>
-                            <span class="file-change-stats">
-                              <span class="diff-add">+{{ file.additions }}</span>
-                              <span class="diff-del">-{{ file.deletions }}</span>
-                            </span>
-                          </div>
-                        </div>
-                        <pre class="diff-block">{{ turn.diff }}</pre>
-                      </details>
-                    </div>
-                  </template>
-                </div>
-              </details>
-
               <div
                 v-for="entry in turnVisibleEntries(turn)"
                 :key="entry.item.id || `${turn.id}-${entry.index}`"
@@ -348,6 +213,146 @@
                   >
                     {{ entry.item.title }}
                   </div>
+
+                  <details
+                    v-if="shouldRenderProcessInEntry(turn, entry)"
+                    class="turn-process is-inline"
+                    :open="turn.status === 'inProgress'"
+                  >
+                    <summary class="turn-process-summary">
+                      <span class="turn-process-title">
+                        <span v-if="turn.status === 'inProgress'" class="activity-spinner is-small"></span>
+                        <span>{{ turnProcessedSummary(turn) }}</span>
+                      </span>
+                      <span v-if="turnProcessedDuration(turn)" class="turn-process-duration">{{ turnProcessedDuration(turn) }}</span>
+                    </summary>
+
+                    <div class="turn-process-items">
+                      <template
+                        v-for="block in turnTimelineBlocks(turn)"
+                        :key="`${turn.id}-timeline-${block.startIndex}-${block.kind}`"
+                      >
+                        <div v-if="block.kind === 'commands'" class="process-command-group">
+                          <details>
+                            <summary class="process-command-summary">
+                              <span>已运行 {{ block.entries.length }} 条命令</span>
+                              <span v-if="blockDuration(block)">{{ blockDuration(block) }}</span>
+                            </summary>
+                            <div class="process-command-list">
+                              <div
+                                v-for="processEntry in block.entries"
+                                :key="processEntry.item.id || `${turn.id}-cmd-${processEntry.index}`"
+                                class="process-entry-card"
+                              >
+                                <div class="process-entry-head">
+                                  <span>{{ toolDisplayName(processEntry.item) }}</span>
+                                  <span v-if="toolCommandTag(processEntry.item)" class="tool-command-tag" :title="toolCommandTag(processEntry.item)">
+                                    {{ toolCommandTag(processEntry.item) }}
+                                  </span>
+                                </div>
+                                <details v-if="hasStructuredToolDetails(processEntry.item)" class="tool-details">
+                                  <summary>输出</summary>
+                                  <div v-if="processEntry.item.body" class="message-body is-code">
+                                    <pre>{{ processEntry.item.body }}</pre>
+                                  </div>
+                                  <div v-if="processEntry.item.auxiliary" class="message-aux tool-output">
+                                    <pre>{{ processEntry.item.auxiliary }}</pre>
+                                  </div>
+                                </details>
+                              </div>
+                            </div>
+                          </details>
+                        </div>
+
+                        <div
+                          v-else
+                          v-for="processEntry in block.entries"
+                          :key="processEntry.item.id || `${turn.id}-timeline-${processEntry.index}`"
+                          class="process-entry-card"
+                          :class="`is-${processEntry.item.type}`"
+                        >
+                          <div class="process-entry-head">
+                            <span>{{ processEntryTitle(processEntry.item) }}</span>
+                            <span v-if="processEntry.item.status">{{ processEntry.item.status }}</span>
+                          </div>
+                          <template v-if="processEntry.item.type === 'agentMessage' || processEntry.item.type === 'userMessage'">
+                            <div v-if="itemImages(processEntry.item).length" class="image-strip">
+                              <el-image
+                                v-for="image in itemImages(processEntry.item)"
+                                :key="image.url"
+                                class="message-thumb"
+                                :src="image.url"
+                                :preview-src-list="itemPreviewUrls(processEntry.item)"
+                                :initial-index="image.index"
+                                fit="cover"
+                                preview-teleported
+                              />
+                            </div>
+                            <div v-if="itemText(processEntry.item)" class="markdown-body">
+                              <VueMarkdown :source="renderMarkdown(itemText(processEntry.item))" :options="markdownOptions" />
+                            </div>
+                          </template>
+                          <template v-else-if="isStructuredToolItem(processEntry.item)">
+                            <div class="tool-headline">
+                              <span class="tool-type">{{ toolDisplayName(processEntry.item) }}</span>
+                              <span v-if="toolCommandTag(processEntry.item)" class="tool-command-tag" :title="toolCommandTag(processEntry.item)">
+                                {{ toolCommandTag(processEntry.item) }}
+                              </span>
+                            </div>
+                            <details v-if="hasStructuredToolDetails(processEntry.item)" class="tool-details">
+                              <summary>查看原始内容</summary>
+                              <div v-if="processEntry.item.body" class="message-body is-code">
+                                <pre>{{ processEntry.item.body }}</pre>
+                              </div>
+                              <div v-if="processEntry.item.auxiliary" class="message-aux tool-output">
+                                <pre>{{ processEntry.item.auxiliary }}</pre>
+                              </div>
+                            </details>
+                          </template>
+                          <template v-else>
+                            <div v-if="processEntry.item.body" class="message-body" :class="{ 'is-code': isCodeType(processEntry.item.type) }">
+                              <pre v-if="isCodeType(processEntry.item.type)">{{ processEntry.item.body }}</pre>
+                              <div v-else class="markdown-body">
+                                <VueMarkdown :source="renderMarkdown(itemText(processEntry.item) || processEntry.item.body)" :options="markdownOptions" />
+                              </div>
+                            </div>
+                            <details v-if="processEntry.item.auxiliary" class="message-aux">
+                              <summary>详细输出</summary>
+                              <pre>{{ processEntry.item.auxiliary }}</pre>
+                            </details>
+                          </template>
+                        </div>
+
+                        <div v-if="block.kind === 'diff'" class="process-entry-card is-fileChange">
+                          <div class="process-entry-head">
+                            <span>文件变更</span>
+                            <span>
+                              <span class="diff-add">+{{ diffSummary(turn.diff).additions }}</span>
+                              <span class="diff-del"> -{{ diffSummary(turn.diff).deletions }}</span>
+                            </span>
+                          </div>
+                          <details class="tool-details">
+                            <summary>查看 diff</summary>
+                            <div class="file-change-list">
+                              <div v-for="file in diffSummary(turn.diff).files" :key="file.path" class="file-change-row">
+                                <span class="file-change-path">{{ file.path }}</span>
+                                <span class="file-change-stats">
+                                  <span class="diff-add">+{{ file.additions }}</span>
+                                  <span class="diff-del">-{{ file.deletions }}</span>
+                                </span>
+                              </div>
+                            </div>
+                            <pre class="diff-block">{{ turn.diff }}</pre>
+                          </details>
+                        </div>
+                      </template>
+                    </div>
+                  </details>
+
+                  <div
+                    v-if="shouldRenderProcessInEntry(turn, entry) && (entry.item.body || entry.item.auxiliary)"
+                    class="process-summary-divider"
+                  ></div>
 
                   <template v-if="isStructuredToolItem(entry.item)">
                     <div class="tool-card">
@@ -811,17 +816,37 @@ function finalAgentEntry(turn: Turn): TurnItemEntry | undefined {
   return undefined
 }
 
+function processHostEntry(turn: Turn): TurnItemEntry | undefined {
+  const finalEntry = finalAgentEntry(turn)
+  if (finalEntry) return finalEntry
+  if (turnProcessSummaryItems(turn).length === 0) return undefined
+  return {
+    index: Number.MAX_SAFE_INTEGER,
+    item: {
+      id: `${turn.id}-process-host`,
+      type: 'agentMessage',
+      title: '',
+      body: '',
+      status: '',
+      auxiliary: '',
+    },
+  }
+}
+
 function turnVisibleEntries(turn: Turn): TurnItemEntry[] {
   const entries = turnItemEntries(turn)
   const userEntries = entries.filter((entry) => entry.item.type === 'userMessage')
-  if (turn.status === 'inProgress') {
-    return userEntries
-  }
-  const finalEntry = finalAgentEntry(turn)
-  if (finalEntry) return [...userEntries, finalEntry]
+  const hostEntry = processHostEntry(turn)
+  if (hostEntry) return [...userEntries, hostEntry]
   return userEntries.length > 0
     ? userEntries
     : entries.filter((entry) => entry.item.type === 'agentMessage').slice(-1)
+}
+
+function shouldRenderProcessInEntry(turn: Turn, entry: TurnItemEntry): boolean {
+  if (turnProcessSummaryItems(turn).length === 0) return false
+  const hostEntry = processHostEntry(turn)
+  return Boolean(hostEntry && entry.index === hostEntry.index && entry.item.id === hostEntry.item.id)
 }
 
 function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
@@ -2181,6 +2206,30 @@ onUnmounted(() => {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.62);
   box-shadow: none;
+}
+
+.turn-process.is-inline {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.turn-process.is-inline .turn-process-summary {
+  padding: 0 0 8px;
+}
+
+.turn-process.is-inline .turn-process-items {
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(216, 230, 251, 0.92);
+}
+
+.process-summary-divider {
+  height: 1px;
+  margin: 10px 0 12px;
+  background: rgba(216, 230, 251, 0.95);
 }
 
 .turn-process-summary {
