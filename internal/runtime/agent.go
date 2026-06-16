@@ -129,7 +129,7 @@ func (a *Agent) Unsubscribe(ch chan Event) {
 }
 
 func (a *Agent) Dashboard() Dashboard {
-	a.syncCodexHistorySnapshots()
+	a.syncCodexLiveSummaries(context.Background())
 	summaries := a.listSessionsFromStore()
 	approvals := a.PendingRequests()
 
@@ -176,7 +176,7 @@ func sessionIsActive(session SessionSummary) bool {
 }
 
 func (a *Agent) ListSessions() []SessionSummary {
-	a.syncCodexHistorySnapshots()
+	a.syncCodexLiveSummaries(context.Background())
 	return a.listSessionsFromStore()
 }
 
@@ -195,15 +195,69 @@ func (a *Agent) listSessionsFromStore() []SessionSummary {
 	return summaries
 }
 
-func (a *Agent) syncCodexHistorySnapshots() {
+func (a *Agent) syncCodexLiveSummaries(ctx context.Context) {
+	if a.client != nil {
+		readCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		threads, err := a.fetchThreads(readCtx)
+		cancel()
+		if err == nil {
+			loaded := map[string]bool{}
+			loadedOK := false
+			loadedCtx, loadedCancel := context.WithTimeout(ctx, 4*time.Second)
+			if loadedIDs, loadedErr := a.fetchLoadedThreadIDs(loadedCtx); loadedErr == nil {
+				loadedOK = true
+				for _, id := range loadedIDs {
+					loaded[id] = true
+				}
+			}
+			loadedCancel()
+			for _, thread := range threads {
+				if strings.TrimSpace(thread.ID) == "" || isClaudeThreadID(thread.ID) {
+					continue
+				}
+				liveStatus := thread.Status
+				liveActive := codexThreadStatusIsActive(liveStatus)
+				_ = a.mergeCodexHistoryThread(&thread)
+				if !liveActive {
+					thread.Status = liveStatus
+					completeInProgressHistoryTurns(&thread)
+				}
+				a.store.UpsertThread(thread)
+				if loadedOK {
+					a.store.SetSessionLoaded(thread.ID, loaded[thread.ID])
+				}
+			}
+			return
+		}
+	}
+
 	for _, record := range a.store.SnapshotSessions() {
 		if isClaudeThreadID(record.Thread.ID) {
 			continue
 		}
-		if err := a.refreshCodexThreadFromHistory(&record); err != nil {
+		if err := a.mergeCodexHistoryThread(&record.Thread); err != nil {
 			continue
 		}
+		if strings.TrimSpace(record.Thread.Status.Type) == "active" && !record.Managed && !record.Loaded && len(record.Thread.Status.ActiveFlags) == 0 {
+			record.Thread.Status.Type = "idle"
+			completeInProgressHistoryTurns(&record.Thread)
+		}
 		a.store.UpsertThread(record.Thread)
+	}
+}
+
+func codexThreadStatusIsActive(status codex.ThreadStatus) bool {
+	return status.Type == "active" || status.Type == "inProgress" || len(status.ActiveFlags) > 0
+}
+
+func completeInProgressHistoryTurns(thread *codex.Thread) {
+	if thread == nil {
+		return
+	}
+	for idx := range thread.Turns {
+		if strings.TrimSpace(thread.Turns[idx].Status) == "inProgress" {
+			thread.Turns[idx].Status = "completed"
+		}
 	}
 }
 

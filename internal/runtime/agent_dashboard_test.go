@@ -218,7 +218,7 @@ func TestDashboardActiveSessionsIncludeInProgressLastTurn(t *testing.T) {
 	}
 }
 
-func TestDashboardRefreshesCodexHistoryBeforeStats(t *testing.T) {
+func TestDashboardDoesNotCountStaleHistoryOnlyInProgressTurns(t *testing.T) {
 	sessionStore, err := store.New(nil)
 	if err != nil {
 		t.Fatalf("create session store: %v", err)
@@ -247,14 +247,14 @@ func TestDashboardRefreshesCodexHistoryBeforeStats(t *testing.T) {
 	agent := &Agent{store: sessionStore}
 	dashboard := agent.Dashboard()
 
-	if got, want := dashboard.Stats.ActiveSessions, 1; got != want {
+	if got, want := dashboard.Stats.ActiveSessions, 0; got != want {
 		t.Fatalf("active sessions = %d, want %d", got, want)
 	}
-	if got := dashboard.Sessions[0].Status; got != "active" {
-		t.Fatalf("summary status = %q, want active", got)
+	if got := dashboard.Sessions[0].Status; got != "idle" {
+		t.Fatalf("summary status = %q, want idle", got)
 	}
-	if got := dashboard.Sessions[0].LastTurnStatus; got != "inProgress" {
-		t.Fatalf("last turn status = %q, want inProgress", got)
+	if got := dashboard.Sessions[0].LastTurnStatus; got != "completed" {
+		t.Fatalf("last turn status = %q, want completed", got)
 	}
 }
 
