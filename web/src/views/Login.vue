@@ -10,8 +10,14 @@
           </div>
         </div>
         <p class="left-desc">Codex 会话管理控制台，支持会话监控、审批处理、指令发送与实时交互。</p>
-        <div class="platform-grid">
-          <div class="platform-item" v-for="item in platformItems" :key="item">{{ item }}</div>
+        <div class="feature-grid">
+          <div class="feature-item" v-for="item in featureItems" :key="item.title">
+            <el-icon class="feature-icon"><component :is="item.icon" /></el-icon>
+            <div class="feature-text">
+              <div class="feature-title">{{ item.title }}</div>
+              <div class="feature-desc">{{ item.desc }}</div>
+            </div>
+          </div>
         </div>
         <div class="security-panel">
           <div class="security-title">安全机制</div>
@@ -59,10 +65,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { Monitor, CircleCheck, Promotion, ChatLineRound, Connection, Lock } from '@element-plus/icons-vue'
 import brandIcon from '../../public/favicon.svg'
 
 const router = useRouter()
@@ -71,7 +78,15 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const showError = ref(false)
 
-const platformItems = ['会话监控', '审批处理', '指令发送', '实时交互', '多 Agent', '安全认证']
+const featureItems = [
+  { title: '会话监控', desc: '实时跟踪 Codex 会话状态', icon: markRaw(Monitor) },
+  { title: '审批处理', desc: '一键处理命令与文件变更', icon: markRaw(CircleCheck) },
+  { title: '指令发送', desc: '随时随地下达新指令', icon: markRaw(Promotion) },
+  { title: '实时交互', desc: '移动端查看消息流与文件', icon: markRaw(ChatLineRound) },
+  { title: '多 Agent', desc: 'Codex / Claude 统一入口', icon: markRaw(Connection) },
+  { title: '安全认证', desc: 'JWT 鉴权与操作审计', icon: markRaw(Lock) },
+]
+
 const securityItems = ['JWT Token', '密码验证', '会话隔离', '操作审计']
 
 const form = reactive({ username: '', password: '' })
@@ -177,23 +192,60 @@ async function handleLogin() {
   line-height: 1.9;
 }
 
-.platform-grid {
+.feature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 32px;
 }
 
-.platform-item {
-  min-height: 46px;
+.feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.feature-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.feature-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  border: 1px solid rgba(255, 255, 255, 0.26);
+  justify-content: center;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 18px;
+}
+
+.feature-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feature-title {
   font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.feature-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .security-panel {
@@ -393,8 +445,35 @@ async function handleLogin() {
     color: rgba(255, 255, 255, 0.92);
   }
 
-  .platform-grid {
-    display: none;
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-width: 360px;
+    margin: 0 auto 0;
+  }
+
+  .feature-item {
+    padding: 12px 14px;
+    gap: 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .feature-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-size: 16px;
+  }
+
+  .feature-title {
+    font-size: 14px;
+  }
+
+  .feature-desc {
+    font-size: 11.5px;
+    line-height: 1.4;
   }
 
   .security-panel {
@@ -528,6 +607,33 @@ async function handleLogin() {
     max-width: 280px;
     font-size: 12.5px;
     line-height: 1.6;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    max-width: 320px;
+  }
+
+  .feature-item {
+    padding: 10px 12px;
+    gap: 9px;
+  }
+
+  .feature-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    font-size: 15px;
+  }
+
+  .feature-title {
+    font-size: 13px;
+  }
+
+  .feature-desc {
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .login-right {
