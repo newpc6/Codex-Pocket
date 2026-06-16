@@ -18,6 +18,8 @@ import (
 
 const maxChangedFileContentBytes = 240 * 1024
 
+var errEmptyCommitRef = errors.New("commit ref is required")
+
 func (a *Agent) Options(ctx context.Context) SessionOptions {
 	options := defaultSessionOptions()
 	options.Models = a.modelOptions(ctx)
@@ -164,7 +166,57 @@ func (a *Agent) SessionChanges(ctx context.Context, threadID string, scope Chang
 	if cwd == "" {
 		return SessionChanges{}, errors.New("session working directory is unknown")
 	}
+	scope = normalizeChangeScope(scope)
+	if scope == ChangeScopeCommit && strings.TrimSpace(ref) == "" {
+		return emptySessionChanges(scope, ref, base, cwd), nil
+	}
 	return readGitChanges(ctx, cwd, scope, ref, base, filePath)
+}
+
+func (a *Agent) RevertSessionChanges(ctx context.Context, threadID string, files []string) (SessionChanges, error) {
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok {
+		return SessionChanges{}, errors.New("session not found")
+	}
+	cwd := strings.TrimSpace(record.Thread.CWD)
+	if cwd == "" {
+		return SessionChanges{}, errors.New("session working directory is unknown")
+	}
+	if err := ensureGitWorktree(ctx, cwd); err != nil {
+		return SessionChanges{}, err
+	}
+	targets, err := cleanChangePaths(cwd, files)
+	if err != nil {
+		return SessionChanges{}, err
+	}
+	if len(targets) == 0 {
+		return SessionChanges{}, errors.New("no files selected")
+	}
+
+	for _, target := range targets {
+		if isGitTracked(ctx, cwd, target) {
+			if _, err := runGit(ctx, cwd, "restore", "--worktree", "--", target); err != nil {
+				return SessionChanges{}, err
+			}
+			continue
+		}
+		if err := removeWorkspaceFile(cwd, target); err != nil {
+			return SessionChanges{}, err
+		}
+	}
+	return readGitChanges(ctx, cwd, ChangeScopeWorkspace, "", "", "")
+}
+
+func emptySessionChanges(scope ChangeScope, ref, base, cwd string) SessionChanges {
+	return SessionChanges{
+		Scope:     scope,
+		Ref:       strings.TrimSpace(ref),
+		Base:      strings.TrimSpace(base),
+		CWD:       cwd,
+		Files:     []ChangedFile{},
+		Diff:      "",
+		Generated: time.Now().UnixMilli(),
+	}
 }
 
 func (a *Agent) StartReview(ctx context.Context, threadID string, req ReviewStartRequest) (TurnDetail, error) {
@@ -237,6 +289,67 @@ func reviewTarget(scope ChangeScope, ref, base string) (map[string]any, error) {
 	default:
 		return map[string]any{"type": "uncommittedChanges"}, nil
 	}
+}
+
+func cleanChangePaths(cwd string, files []string) ([]string, error) {
+	cleanCWD, err := filepath.Abs(cwd)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	targets := []string{}
+	for _, raw := range files {
+		normalized := filepath.ToSlash(strings.TrimSpace(raw))
+		if normalized == "" || strings.HasPrefix(normalized, "/") || strings.Contains(normalized, "\x00") {
+			return nil, errors.New("invalid file path")
+		}
+		candidate := filepath.Clean(filepath.Join(cleanCWD, filepath.FromSlash(normalized)))
+		rel, err := filepath.Rel(cleanCWD, candidate)
+		if err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+			return nil, errors.New("file is outside working directory")
+		}
+		cleanRel := filepath.ToSlash(rel)
+		if _, ok := seen[cleanRel]; ok {
+			continue
+		}
+		seen[cleanRel] = struct{}{}
+		targets = append(targets, cleanRel)
+	}
+	return targets, nil
+}
+
+func isGitTracked(ctx context.Context, cwd, filePath string) bool {
+	_, err := runGit(ctx, cwd, "ls-files", "--error-unmatch", "--", filePath)
+	return err == nil
+}
+
+func removeWorkspaceFile(cwd, filePath string) error {
+	cleanCWD, err := filepath.Abs(cwd)
+	if err != nil {
+		return err
+	}
+	target := filepath.Clean(filepath.Join(cleanCWD, filepath.FromSlash(filePath)))
+	rel, err := filepath.Rel(cleanCWD, target)
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return errors.New("file is outside working directory")
+	}
+	info, err := os.Stat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return errors.New("refusing to remove directory")
+	}
+	return os.Remove(target)
 }
 
 func buildReviewPrompt(changes SessionChanges) string {
@@ -346,7 +459,7 @@ func gitChangeArgs(scope ChangeScope, ref, base string) ([]string, []string, err
 	case ChangeScopeCommit:
 		target := strings.TrimSpace(ref)
 		if target == "" {
-			return nil, nil, errors.New("commit ref is required")
+			return nil, nil, errEmptyCommitRef
 		}
 		return []string{"diff", "--no-ext-diff", "--find-renames", target + "^", target},
 			[]string{"diff", "--numstat", "--find-renames", target + "^", target}, nil

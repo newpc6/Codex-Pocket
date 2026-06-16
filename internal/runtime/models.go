@@ -241,3 +241,7 @@ type ReviewStartRequest struct {
 	Ref   string      `json:"ref"`
 	Base  string      `json:"base"`
 }
+
+type RevertChangesRequest struct {
+	Files []string `json:"files"`
+}

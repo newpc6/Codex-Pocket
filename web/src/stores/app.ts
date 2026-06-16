@@ -597,6 +597,13 @@ export const useAppStore = defineStore('app', () => {
     return res.data
   }
 
+  async function revertSessionChanges(sessionId: string, files: string[]) {
+    const res = await api.post<SessionChanges>(`/sessions/${sessionId}/changes/revert`, { files })
+    await loadSession(sessionId)
+    await refreshDashboard()
+    return res.data
+  }
+
   async function startReview(sessionId: string, params?: { scope?: string; ref?: string; base?: string }) {
     const res = await api.post<Turn>(`/sessions/${sessionId}/review`, params || {})
     if (res.data?.id) {
@@ -792,7 +799,7 @@ export const useAppStore = defineStore('app', () => {
     renameSession, forkSession, compactSession, rollbackSession,
     setSessionGoal, clearSessionGoal,
     startTurn, steerTurn, interruptTurn, resolveApproval, startSession,
-    loadOptions, loadSessionChanges, startReview,
+    loadOptions, loadSessionChanges, revertSessionChanges, startReview,
     replaceSessionDetail,
     connectSSE, disconnectSSE, registerActiveSession, unregisterActiveSession,
   }

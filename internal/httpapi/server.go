@@ -498,7 +498,32 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 			r.URL.Query().Get("file"),
 		)
 		if err != nil {
-			writeErrorMessage(w, http.StatusBadGateway, err.Error())
+			status := http.StatusBadGateway
+			if isClientFacingChangeError(err) {
+				status = http.StatusBadRequest
+			}
+			writeErrorMessage(w, status, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, changes)
+	case "changes/revert":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		var request runtime.RevertChangesRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		changes, err := s.agent.RevertSessionChanges(ctx, sessionID, request.Files)
+		if err != nil {
+			status := http.StatusBadGateway
+			if isClientFacingChangeError(err) {
+				status = http.StatusBadRequest
+			}
+			writeErrorMessage(w, status, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, changes)
@@ -896,6 +921,21 @@ func writeErrorMessage(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]any{
 		"error": message,
 	})
+}
+
+func isClientFacingChangeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(msg, "session not found"),
+		strings.Contains(msg, "working directory is unknown"),
+		strings.Contains(msg, "is not a git repository"),
+		strings.Contains(msg, "commit ref is required"):
+		return true
+	}
+	return false
 }
 
 func normalizeCWD(value string) string {

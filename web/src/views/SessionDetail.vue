@@ -428,6 +428,37 @@
                   <div class="message-body">{{ turn.error }}</div>
                 </div>
               </div>
+
+              <div v-if="turnChangedFiles(turn).length > 0" class="turn-change-card">
+                <div class="turn-change-head">
+                  <span>{{ turnChangedFiles(turn).length }} 个文件已更改</span>
+                  <div class="turn-change-actions">
+                    <button type="button" @click="reviewTurnChanges(turn)">审查</button>
+                    <button
+                      type="button"
+                      :disabled="revertingFiles"
+                      @click="revertTurnChanges(turn)"
+                    >
+                      撤销
+                    </button>
+                  </div>
+                </div>
+                <div class="turn-change-list">
+                  <button
+                    v-for="file in turnChangedFiles(turn)"
+                    :key="`${turn.id}-${file.path}`"
+                    type="button"
+                    class="turn-change-row"
+                    @click="openTurnChangedFile(file.path)"
+                  >
+                    <span class="changed-file-path">{{ file.path }}</span>
+                    <span class="changed-file-stats">
+                      <span class="diff-add">+{{ file.additions }}</span>
+                      <span class="diff-del">-{{ file.deletions }}</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
             </section>
           </template>
 
@@ -546,9 +577,9 @@
     </el-dialog>
 
     <div v-if="summary && !summary.ended" class="input-area">
-      <div v-if="isStreamingReply" class="streaming-hint">
-        <span class="live-dot"></span>
-        Codex 正在回复
+      <div v-if="runningTurn" class="streaming-hint">
+        <span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>{{ liveActivityText(runningTurn) }}</span>
       </div>
       <div v-else-if="!summary.loaded" class="input-status-hint">
         未接管会话，发送时会自动接管。
@@ -621,6 +652,7 @@ const uploadingImage = ref(false)
 const resuming = ref(false)
 const detaching = ref(false)
 const reviewing = ref(false)
+const revertingFiles = ref(false)
 const chatAreaRef = ref<HTMLElement | null>(null)
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const followLiveOutput = ref(true)
@@ -917,6 +949,7 @@ function turnProcessSummary(turn: Turn): string {
 }
 
 function turnProcessedSummary(turn: Turn): string {
+  if (turn.status === 'inProgress') return liveActivityText(turn)
   return '已处理'
 }
 
@@ -1019,6 +1052,74 @@ function diffSummary(diff: string): DiffSummary {
   }
   diffSummaryCache.set(diff || '', result)
   return result
+}
+
+function turnChangedFiles(turn: Turn): DiffFileSummary[] {
+  const byPath = new Map<string, DiffFileSummary>()
+  for (const file of diffSummary(turn.diff).files) {
+    byPath.set(file.path, { ...file })
+  }
+  for (const item of turn.items || []) {
+    if (item.type === 'userMessage' || item.type === 'agentMessage') continue
+    for (const file of fileChangesFromItem(item)) {
+      const existing = byPath.get(file.path)
+      if (existing) {
+        existing.additions = Math.max(existing.additions, file.additions)
+        existing.deletions = Math.max(existing.deletions, file.deletions)
+      } else {
+        byPath.set(file.path, file)
+      }
+    }
+  }
+  return Array.from(byPath.values())
+}
+
+function fileChangesFromItem(item: TurnItem): DiffFileSummary[] {
+  const raw = `${item.title || ''}\n${item.body || ''}\n${item.auxiliary || ''}`
+  const files: DiffFileSummary[] = []
+  const seen = new Set<string>()
+  for (const line of raw.split('\n')) {
+    const path = extractChangedPathFromLine(line)
+    if (!path || seen.has(path)) continue
+    seen.add(path)
+    const nums = (line.match(/[+-]\d+/g) || []).map((value) => Number(value))
+    files.push({
+      path,
+      additions: Math.max(...nums.filter((value) => value > 0), 0),
+      deletions: Math.abs(Math.min(...nums.filter((value) => value < 0), 0)),
+    })
+  }
+  return files
+}
+
+function extractChangedPathFromLine(line: string): string {
+  const trimmed = line.trim()
+  if (!trimmed) return ''
+
+  const diffMatch = trimmed.match(/^diff --git a\/(.+?) b\/(.+)$/)
+  if (diffMatch) return normalizeChangedPath(diffMatch[2] || diffMatch[1])
+
+  const statusMatch = trimmed.match(/^(?:M|A|D|R|C|AM|MM|UU|\?\?)\s+(.+)$/)
+  if (statusMatch) return normalizeChangedPath(statusMatch[1])
+
+  const statMatch = trimmed.match(/^(.+?)\s+\|\s+\d+/)
+  if (statMatch) return normalizeChangedPath(statMatch[1])
+
+  const genericMatch = trimmed.match(/([A-Za-z0-9_./\\-]+\.(?:go|ts|tsx|js|jsx|vue|css|scss|html|json|md|yaml|yml|toml|rs|py|java|kt|swift|c|cpp|h|hpp|cs|sql))/)
+  if (genericMatch) return normalizeChangedPath(genericMatch[1])
+  return ''
+}
+
+function normalizeChangedPath(path: string): string {
+  let value = path.trim().replace(/\\/g, '/')
+  value = value.replace(/^"|"$/g, '')
+  value = value.replace(/^\.\//, '')
+  if (!value || value.startsWith('-') || value.includes('://')) return ''
+  if (value.includes(' => ')) {
+    const parts = value.split(' => ')
+    value = parts[parts.length - 1].trim()
+  }
+  return value
 }
 
 function renderMarkdown(source: string): string {
@@ -1258,6 +1359,53 @@ async function selectChangedFile(path: string) {
   } catch (e: any) {
     selectedFileDetail.value = null
     ElMessage.error(e.response?.data?.error || '读取文件失败')
+  }
+}
+
+async function openTurnChangedFile(path: string) {
+  changeScope.value = 'workspace'
+  changesDrawerOpen.value = true
+  await reloadChanges()
+  if (path) {
+    await selectChangedFile(path)
+  }
+}
+
+function reviewTurnChanges(_turn: Turn) {
+  reviewScope.value = 'workspace'
+  reviewRef.value = ''
+  reviewBase.value = changeBase.value || 'main'
+  reviewDialogOpen.value = true
+}
+
+async function revertTurnChanges(turn: Turn) {
+  const files = turnChangedFiles(turn).map((file) => file.path)
+  if (files.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `将撤销 ${files.length} 个工作区文件的未提交改动。未跟踪文件会被删除，这个操作无法在 CodexPocket 内撤回。`,
+      '撤销文件改动',
+      {
+        confirmButtonText: '撤销改动',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+
+  revertingFiles.value = true
+  try {
+    const data = await app.revertSessionChanges(sessionId, files)
+    changes.value = data
+    selectedFileDetail.value = null
+    selectedChangeFile.value = ''
+    ElMessage.success('已撤销文件改动')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '撤销失败')
+  } finally {
+    revertingFiles.value = false
   }
 }
 
@@ -1998,9 +2146,37 @@ onUnmounted(() => {
   animation: live-pulse 1.5s ease-in-out infinite;
 }
 
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 10px;
+}
+
+.thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cf-warning);
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
 @keyframes live-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+@keyframes thinking-dot {
+  0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
 }
 
 .session-meta {
@@ -2738,6 +2914,74 @@ onUnmounted(() => {
   gap: 7px;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.turn-change-card {
+  width: min(100%, 860px);
+  align-self: flex-start;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  overflow: hidden;
+}
+
+.turn-change-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(216, 230, 251, 0.78);
+  color: var(--cf-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.turn-change-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.turn-change-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--cf-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.turn-change-actions button:disabled {
+  color: var(--cf-text-lighter);
+  cursor: not-allowed;
+}
+
+.turn-change-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.turn-change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(216, 230, 251, 0.6);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.turn-change-row:last-child {
+  border-bottom: 0;
+}
+
+.turn-change-row:hover {
+  background: #f8fbff;
 }
 
 .file-detail-panel {
