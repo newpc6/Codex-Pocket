@@ -30,6 +30,9 @@ func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionS
 	if record.Runtime.Ended {
 		effectiveStatus = "idle"
 	}
+	if effectiveStatus == "active" && len(record.Thread.Turns) > 0 && !recordHasInProgressTurn(record) && len(record.Thread.Status.ActiveFlags) == 0 {
+		effectiveStatus = "idle"
+	}
 	historyAvailable := sessionHistoryAvailable(record)
 	runtimeAvailable := sessionRuntimeAvailable(record)
 	resumeAvailable, resumeBlockedReason := resumeAvailability(record)
@@ -62,6 +65,15 @@ func toSessionSummary(record store.SessionRecord, pendingApprovals int) SessionS
 		ResumeBlockedReason: resumeBlockedReason,
 		Ended:               record.Runtime.Ended,
 	}
+}
+
+func recordHasInProgressTurn(record store.SessionRecord) bool {
+	for _, turn := range record.Thread.Turns {
+		if strings.TrimSpace(turn.Status) == "inProgress" {
+			return true
+		}
+	}
+	return false
 }
 
 func inferAgentID(thread codex.Thread) string {
