@@ -228,6 +228,28 @@
                     </summary>
 
                     <div class="turn-process-items">
+                      <div v-if="turnProcessFileEditSummary(turn).files.length > 0" class="process-entry-card is-live-file-edit">
+                        <div class="process-entry-head">
+                          <span>{{ turnProcessFileEditSummary(turn).label }}</span>
+                          <span class="file-edit-stats">
+                            <span class="diff-add">+{{ turnProcessFileEditSummary(turn).additions }}</span>
+                            <span class="diff-del">-{{ turnProcessFileEditSummary(turn).deletions }}</span>
+                          </span>
+                        </div>
+                        <div class="file-edit-list">
+                          <div
+                            v-for="file in turnProcessFileEditSummary(turn).files.slice(0, 3)"
+                            :key="`${turn.id}-process-file-${file.path}`"
+                            class="file-edit-row"
+                          >
+                            <span class="file-edit-path">{{ file.path }}</span>
+                            <span class="file-edit-stats">
+                              <span class="diff-add">+{{ file.additions }}</span>
+                              <span class="diff-del">-{{ file.deletions }}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                       <template
                         v-for="block in turnTimelineBlocks(turn)"
                         :key="`${turn.id}-timeline-${block.startIndex}-${block.kind}`"
@@ -947,7 +969,7 @@ function finalAgentEntry(turn: Turn): TurnItemEntry | undefined {
 function processHostEntry(turn: Turn): TurnItemEntry | undefined {
   const finalEntry = finalAgentEntry(turn)
   if (finalEntry) return finalEntry
-  if (turnProcessSummaryItems(turn).length === 0) return undefined
+  if (!hasTurnProcessContent(turn)) return undefined
   return {
     index: Number.MAX_SAFE_INTEGER,
     item: {
@@ -972,9 +994,13 @@ function turnVisibleEntries(turn: Turn): TurnItemEntry[] {
 }
 
 function shouldRenderProcessInEntry(turn: Turn, entry: TurnItemEntry): boolean {
-  if (turnProcessSummaryItems(turn).length === 0) return false
+  if (!hasTurnProcessContent(turn)) return false
   const hostEntry = processHostEntry(turn)
   return Boolean(hostEntry && entry.index === hostEntry.index && entry.item.id === hostEntry.item.id)
+}
+
+function hasTurnProcessContent(turn: Turn): boolean {
+  return turnProcessSummaryItems(turn).length > 0 || turnProcessFileEditSummary(turn).files.length > 0
 }
 
 function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
@@ -983,6 +1009,7 @@ function turnProcessSummaryItems(turn: Turn): TurnItemEntry[] {
   return turnItemEntries(turn).filter((entry) => {
     if (entry.index === finalIndex) return false
     if (entry.item.type === 'userMessage') return false
+    if (entry.item.type === 'fileChange') return false
     if (entry.item.type === 'agentMessage' && !itemText(entry.item)) return false
     return true
   })
@@ -1073,6 +1100,20 @@ function turnChangeSummaryText(turn: Turn): string {
   return `${prefix}${files.length} 个文件已更改 +${additions} -${deletions}`
 }
 
+function turnProcessFileEditSummary(turn: Turn) {
+  const files = turnDisplayChangedFiles(turn)
+  const additions = files.reduce((sum, file) => sum + file.additions, 0)
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
+  return {
+    files,
+    additions,
+    deletions,
+    label: turn.status === 'inProgress'
+      ? (files.length === 1 ? '正在编辑文件' : `正在编辑 ${files.length} 个文件`)
+      : `已编辑 ${files.length} 个文件`,
+  }
+}
+
 function turnProcessedSummary(turn: Turn): string {
   return '已处理'
 }
@@ -1112,20 +1153,11 @@ function blockDuration(_block: TurnTimelineBlock): string {
 
 function liveActivityText(turn: Turn): string {
   if (isCompactingSession.value) return '正在自动压缩上下文'
-  if (isEditingFiles(turn)) return liveFileEditText(turn)
+  if (isEditingFiles(turn)) return '正在编辑文件'
   if (turn.items.some((item) => isCommandLikeItem(item))) return '正在运行命令'
   if (turn.items.some((item) => item.type === 'agentMessage' && item.body)) return 'Codex 正在回复'
   if (turn.items.some((item) => item.type === 'reasoning')) return '正在思考'
   return '正在思考'
-}
-
-function liveFileEditText(turn: Turn): string {
-  const files = turnDisplayChangedFiles(turn)
-  const first = files[0]
-  if (!first) return '正在编辑文件'
-  const stats = `${first.additions > 0 ? ` +${first.additions}` : ''}${first.deletions > 0 ? ` -${first.deletions}` : ''}`.trim()
-  const suffix = files.length > 1 ? ` 等 ${files.length} 个文件` : ''
-  return `正在编辑 ${shortFileName(first.path)}${stats ? ` ${stats}` : ''}${suffix}`
 }
 
 function shortFileName(path: string): string {
@@ -1149,6 +1181,7 @@ function shouldShowTurnActivity(turn: Turn): boolean {
 
 function shouldShowLiveActivityAfterTurn(turn: Turn): boolean {
   if (turn.status !== 'inProgress') return false
+  if (isEditingFiles(turn)) return false
   return runningTurn.value?.id === turn.id && turnVisibleEntries(turn).length > 0
 }
 
@@ -2834,6 +2867,45 @@ onUnmounted(() => {
 
 .process-command-list .process-entry-card {
   background: #f8fbff;
+}
+
+.process-entry-card.is-live-file-edit {
+  border-color: rgba(187, 247, 208, 0.95);
+  background: #fbfffc;
+}
+
+.file-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.file-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  color: var(--cf-text-secondary);
+  font-size: 12px;
+}
+
+.file-edit-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cf-primary-dark);
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.file-edit-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .turn-process-items .message-bubble {
