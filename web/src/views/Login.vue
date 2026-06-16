@@ -3,14 +3,7 @@
     <section class="login-left">
       <div class="left-content">
         <div class="brand-lockup">
-          <div class="logo-icon">
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="6" y="6" width="52" height="52" rx="14" fill="white" fill-opacity="0.16" />
-              <path d="M32 13L49 23V41L32 51L15 41V23L32 13Z" stroke="white" stroke-width="2.4" fill="white" fill-opacity="0.12" />
-              <path d="M32 13V51M15 23L49 41M49 23L15 41" stroke="white" stroke-width="1.4" stroke-opacity="0.58" />
-              <circle cx="32" cy="32" r="6" fill="white" fill-opacity="0.42" />
-            </svg>
-          </div>
+          <img class="logo-icon" src="/favicon.svg?v=2" alt="CodexPocket" />
           <div>
             <div class="brand-label">Session Console</div>
             <h1 class="left-title">CodexPocket</h1>
@@ -154,12 +147,9 @@ async function handleLogin() {
   width: 72px;
   height: 72px;
   flex: 0 0 auto;
-}
-
-.logo-icon svg {
   display: block;
-  width: 100%;
-  height: 100%;
+  border-radius: 18px;
+  box-shadow: 0 18px 36px rgba(8, 28, 72, 0.26);
 }
 
 .brand-label {

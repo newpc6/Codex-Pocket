@@ -5,7 +5,7 @@
         <div v-if="isMobile" class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
           <el-icon :size="20"><Operation /></el-icon>
         </div>
-        <div class="brand-mark">CF</div>
+        <img class="brand-mark" src="/favicon.svg?v=2" alt="CodexPocket" />
         <div v-if="!isMobile" class="brand-text">
           <div class="brand-title">CodexPocket</div>
           <div class="brand-subtitle">Session Console</div>
@@ -250,13 +250,9 @@ onUnmounted(() => {
 .brand-mark {
   width: 36px;
   height: 36px;
-  line-height: 36px;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
+  display: block;
+  box-shadow: 0 8px 18px rgba(11, 18, 38, 0.18);
 }
 
 .brand-text {
@@ -531,8 +527,6 @@ onUnmounted(() => {
 .main-layout.is-mobile .brand-mark {
   width: 30px;
   height: 30px;
-  line-height: 30px;
-  font-size: 12px;
 }
 
 .main-layout.is-mobile .header-right {
