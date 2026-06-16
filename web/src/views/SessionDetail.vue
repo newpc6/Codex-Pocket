@@ -369,7 +369,16 @@
                                 </span>
                               </div>
                             </div>
-                            <pre class="diff-block">{{ turn.diff }}</pre>
+                            <div class="diff-viewer inline-diff-viewer">
+                              <div
+                                v-for="(line, index) in diffLines(turn.diff)"
+                                :key="`turn-diff-${turn.id}-${index}`"
+                                class="diff-line"
+                                :class="diffLineClass(line)"
+                              >
+                                {{ line }}
+                              </div>
+                            </div>
                           </details>
                         </div>
                       </template>
@@ -3063,7 +3072,6 @@ onUnmounted(() => {
 }
 
 .message-body.is-code pre,
-.diff-block,
 .message-aux pre {
   margin: 0;
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
@@ -3072,8 +3080,7 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
-.message-body.is-code pre,
-.diff-block {
+.message-body.is-code pre {
   padding: 10px 12px;
   border-radius: 10px;
   background: #0f172a;
@@ -3150,12 +3157,6 @@ onUnmounted(() => {
 .diff-del {
   color: #dc2626;
   font-weight: 650;
-}
-
-.file-change-card .diff-block {
-  margin: 0 14px 14px;
-  max-height: 360px;
-  overflow: auto;
 }
 
 .message-aux {
@@ -3462,6 +3463,11 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.55;
   overflow: auto;
+}
+
+.inline-diff-viewer {
+  margin-top: 10px;
+  max-height: 360px;
 }
 
 .diff-line {

@@ -75,7 +75,16 @@
             <span>文件变更</span>
           </div>
           <div class="section-content">
-            <pre class="diff-block">{{ turn.diff }}</pre>
+            <div class="diff-viewer">
+              <div
+                v-for="(line, lineIndex) in diffLines(turn.diff)"
+                :key="`diff-${turn.id}-${lineIndex}`"
+                class="diff-line"
+                :class="diffLineClass(line)"
+              >
+                {{ line }}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -192,6 +201,19 @@ function itemStatusType(status: string) {
 
 function isCodeType(type: string): boolean {
   return ['commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall'].includes(type)
+}
+
+function diffLines(diff: string): string[] {
+  return (diff || '').split('\n').filter((line) => line.length > 0)
+}
+
+function diffLineClass(line: string) {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'is-meta'
+  if (line.startsWith('+')) return 'is-add'
+  if (line.startsWith('-')) return 'is-del'
+  if (line.startsWith('@@')) return 'is-hunk'
+  if (line.startsWith('diff --git')) return 'is-file'
+  return ''
 }
 
 function isStreamingItem(item: any): boolean {
@@ -632,17 +654,47 @@ function isStreamingItem(item: any): boolean {
 }
 
 /* ---- Diff ---- */
-.turn-section-diff .diff-block {
-  font-size: 12px;
-  background: #1e1e2e;
-  color: #d4d4d4;
-  padding: 12px;
-  border-radius: var(--cf-radius-sm);
-  overflow-x: auto;
-  max-height: 400px;
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
-  line-height: 1.5;
+.diff-viewer {
   margin: 0;
+  padding: 8px 0;
+  border: 1px solid rgba(216, 230, 251, 0.95);
+  border-radius: var(--cf-radius-sm);
+  background: #fff;
+  color: #1f2937;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 400px;
+}
+
+.diff-line {
+  min-height: 18px;
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.diff-line.is-add {
+  background: #e8f7ed;
+  color: #047857;
+}
+
+.diff-line.is-del {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+.diff-line.is-hunk {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.diff-line.is-file,
+.diff-line.is-meta {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 650;
 }
 
 /* ---- Error ---- */
