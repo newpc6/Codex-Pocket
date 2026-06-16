@@ -786,6 +786,15 @@ export const useAppStore = defineStore('app', () => {
       scheduleDashboardRefresh(300)
     })
 
+    sseService.on('turn.completed', async (event: SSEEvent) => {
+      const threadId = event.payload?.threadId as string
+      if (threadId) markSessionCompacting(threadId, false)
+      if (threadId && (activeSessionIds.value.has(threadId) || !!sessionDetails.value[threadId])) {
+        await loadSession(threadId)
+      }
+      scheduleDashboardRefresh(300)
+    })
+
     // Sessions refreshed
     sseService.on('sessions.refreshed', async () => {
       scheduleDashboardRefresh(500)

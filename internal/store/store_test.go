@@ -161,6 +161,37 @@ func TestMarkTurnInterruptedUpdatesLocalState(t *testing.T) {
 	}
 }
 
+func TestMarkTurnCompletedUpdatesLocalState(t *testing.T) {
+	sessionStore, err := New(nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	sessionStore.UpsertThread(codex.Thread{
+		ID:     "thread-1",
+		Status: codex.ThreadStatus{Type: "active"},
+		Turns: []codex.Turn{
+			{ID: "turn-1", Status: "inProgress"},
+		},
+	})
+
+	sessionStore.MarkTurnCompleted("thread-1", "turn-1")
+
+	record, ok := sessionStore.SnapshotSession("thread-1")
+	if !ok {
+		t.Fatalf("SnapshotSession() missing thread")
+	}
+	if got := record.Thread.Status.Type; got != "idle" {
+		t.Fatalf("thread status = %q, want idle", got)
+	}
+	if got := record.Thread.Turns[0].Status; got != "completed" {
+		t.Fatalf("turn status = %q, want completed", got)
+	}
+	if record.Thread.Turns[0].CompletedAt == nil || *record.Thread.Turns[0].CompletedAt <= 0 {
+		t.Fatalf("completedAt = %#v, want timestamp", record.Thread.Turns[0].CompletedAt)
+	}
+}
+
 func stringPtrForTest(value string) *string {
 	return &value
 }

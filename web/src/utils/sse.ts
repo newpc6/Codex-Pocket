@@ -83,6 +83,10 @@ class SSEService {
       this.emit('turn.interrupted', this.parseEvent(e))
     })
 
+    this.source.addEventListener('turn.completed', (e: MessageEvent) => {
+      this.emit('turn.completed', this.parseEvent(e))
+    })
+
     this.source.addEventListener('sessions.refreshed', (e: MessageEvent) => {
       this.emit('sessions.refreshed', this.parseEvent(e))
     })

@@ -115,7 +115,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("initialize app-server: %w", err)
 	}
 
-	c.logger.Info("connected to codex app-server", "platform", initResp.PlatformOS, "userAgent", initResp.UserAgent)
+	c.logger.Info("connected to codex app-server", "platform", initResp.PlatformOS, "userAgent", initResp.UserAgent, "codexHome", initResp.CodexHome)
 	return nil
 }
 

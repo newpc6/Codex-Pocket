@@ -197,6 +197,7 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 	if snapshotOK {
 		if err := a.refreshCodexThreadFromHistory(&record); err == nil {
 			a.store.UpsertThread(record.Thread)
+			record, _ = a.store.SnapshotSession(threadID)
 		}
 	}
 	if offset < 0 {
@@ -232,9 +233,11 @@ func (a *Agent) SessionDetail(ctx context.Context, threadID string, offset, limi
 	if !ok {
 		return SessionDetail{}, errors.New("session not found after refresh")
 	}
+	runtimeActive := codexSessionIsActive(record)
 
 	if err := a.refreshCodexThreadFromHistory(&record); err == nil {
 		a.store.UpsertThread(record.Thread)
+		a.reconcileInactiveCodexTurn(threadID, !runtimeActive)
 		record, _ = a.store.SnapshotSession(threadID)
 	}
 
@@ -1176,6 +1179,15 @@ func (a *Agent) InterruptTurn(ctx context.Context, threadID, turnID string) erro
 		"threadId": threadID,
 		"turnId":   turnID,
 	}, &response); err != nil {
+		if isNoActiveTurnError(err) {
+			a.logger.Warn("codex reported no active turn; reconciling local turn state", "threadId", threadID, "turnId", turnID, "error", err)
+			a.completeStaleCodexTurn(threadID, turnID)
+			a.broker.Publish("turn.completed", map[string]string{
+				"threadId": threadID,
+				"turnId":   turnID,
+			})
+			return nil
+		}
 		return err
 	}
 	a.store.MarkTurnInterrupted(threadID, turnID, "interrupted by user")
@@ -1184,6 +1196,51 @@ func (a *Agent) InterruptTurn(ctx context.Context, threadID, turnID string) erro
 		"turnId":   turnID,
 	})
 	return nil
+}
+
+func isNoActiveTurnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no active turn")
+}
+
+func codexSessionIsActive(record store.SessionRecord) bool {
+	return record.Thread.Status.Type == "active" ||
+		record.Thread.Status.Type == "inProgress" ||
+		len(record.Thread.Status.ActiveFlags) > 0
+}
+
+func (a *Agent) reconcileInactiveCodexTurn(threadID string, runtimeInactive bool) {
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok || isClaudeThreadID(threadID) {
+		return
+	}
+	if !runtimeInactive && codexSessionIsActive(record) {
+		return
+	}
+	a.completeStaleCodexTurn(threadID, "")
+}
+
+func (a *Agent) completeStaleCodexTurn(threadID, turnID string) {
+	record, ok := a.store.SnapshotSession(threadID)
+	if !ok || isClaudeThreadID(threadID) {
+		return
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID != "" {
+		a.store.MarkTurnCompleted(threadID, turnID)
+		return
+	}
+	for i := len(record.Thread.Turns) - 1; i >= 0; i-- {
+		turn := record.Thread.Turns[i]
+		if strings.TrimSpace(turn.Status) != "inProgress" {
+			continue
+		}
+		a.store.MarkTurnCompleted(threadID, turn.ID)
+		return
+	}
 }
 
 func (a *Agent) consumeNotifications(ctx context.Context) {

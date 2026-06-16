@@ -422,6 +422,28 @@ func (s *Store) MarkTurnInterrupted(threadID, turnID, message string) {
 	}
 }
 
+func (s *Store) MarkTurnCompleted(threadID, turnID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.sessions[threadID]
+	if !ok {
+		return
+	}
+	record.Thread.Status = codex.ThreadStatus{Type: "idle"}
+	for i := range record.Thread.Turns {
+		if record.Thread.Turns[i].ID != turnID {
+			continue
+		}
+		record.Thread.Turns[i].Status = "completed"
+		if record.Thread.Turns[i].CompletedAt == nil {
+			now := time.Now().UnixMilli()
+			record.Thread.Turns[i].CompletedAt = &now
+		}
+		return
+	}
+}
+
 func (s *Store) RecordItemStarted(threadID, turnID string, item map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
